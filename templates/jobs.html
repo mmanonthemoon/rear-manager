@@ -81,8 +81,7 @@
           <td class="text-muted td-nowrap" style="font-size:11px">{{ (j.started_at or '-')[:16] }}</td>
           <td class="text-muted" style="font-size:11px">
             {% if j.started_at and j.finished_at %}
-              {# Show duration roughly #}
-              -
+              {{ j.started_at | calc_duration(j.finished_at) }}
             {% else %}-{% endif %}
           </td>
           <td class="font-mono text-muted" style="font-size:12px">{{ j.backup_size or '-' }}</td>
