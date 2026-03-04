@@ -81,6 +81,30 @@ _job_lock     = threading.Lock()
 _scheduler    = None
 
 
+@app.template_filter('calc_duration')
+def calc_duration_filter(started_at, finished_at):
+    """İki tarih string'i arasındaki süreyi insan okunabilir formatta döner."""
+    if not started_at or not finished_at:
+        return '-'
+    try:
+        fmt = '%Y-%m-%d %H:%M:%S'
+        start = datetime.datetime.strptime(str(started_at)[:19], fmt)
+        end   = datetime.datetime.strptime(str(finished_at)[:19], fmt)
+        secs  = int((end - start).total_seconds())
+        if secs < 0:
+            return '-'
+        if secs < 60:
+            return f'{secs}s'
+        elif secs < 3600:
+            return f'{secs // 60}m {secs % 60}s'
+        else:
+            h = secs // 3600
+            m = (secs % 3600) // 60
+            return f'{h}s {m}d'
+    except Exception:
+        return '-'
+
+
 # ─────────────────────────────────────────────────────────────
 # VERİTABANI
 # ─────────────────────────────────────────────────────────────
@@ -974,7 +998,6 @@ def ssh_exec_stream(server, command, log_cb):
     sudo: 'SUDO_PASS_PROMPT: ' sabit prompt metni ile şifre yakalaması güvenilir.
     su  : 'password:', 'parola:' vb. prompt ile şifre gönderilir.
     """
-    _method, actual_method, bpass = server.get('become_method','none'), 'none', ''
     wrapped_cmd, actual_method, bpass = _wrap_become_cmd(server, command)
 
     output_lines = []
@@ -2442,7 +2465,7 @@ def schedule_toggle(scid):
     else:
         _remove_scheduler_job(scid)
 
-    flash(f'Zamanlama #{ scid} {"aktif" if new_state else "devre dışı"} edildi.', 'success')
+    flash(f'Zamanlama #{scid} {"aktif" if new_state else "devre dışı"} edildi.', 'success')
     return redirect(url_for('server_detail', sid=sid))
 
 
@@ -2536,11 +2559,12 @@ def job_detail(jid):
 @login_required
 def job_log_api(jid):
     conn = get_db()
-    row = conn.execute('SELECT log_output, status FROM backup_jobs WHERE id=?', (jid,)).fetchone()
+    row = conn.execute('SELECT log_output, status, finished_at FROM backup_jobs WHERE id=?', (jid,)).fetchone()
     conn.close()
     if not row:
         return jsonify({'log': '', 'status': 'notfound'})
     return jsonify({'log': row['log_output'] or '', 'status': row['status'],
+                    'finished_at': row['finished_at'] or '',
                     'running': jid in _running_jobs})
 
 
@@ -2972,6 +2996,10 @@ def change_password():
         old_pw  = request.form.get('old_password', '')
         new_pw  = request.form.get('new_password', '')
         new_pw2 = request.form.get('new_password2', '')
+
+        if not new_pw:
+            flash('Yeni şifre boş olamaz.', 'danger')
+            return redirect(url_for('change_password'))
 
         if new_pw != new_pw2:
             flash('Yeni şifreler eşleşmiyor.', 'danger')
@@ -4152,13 +4180,14 @@ def api_ansible_run_output(rid):
     offset = int(request.args.get('offset', 0))
     conn = get_db()
     row = conn.execute(
-        'SELECT substr(output,?) as chunk, status FROM ansible_runs WHERE id=?',
+        'SELECT substr(output,?) as chunk, status, finished_at FROM ansible_runs WHERE id=?',
         (offset + 1, rid)
     ).fetchone()
     conn.close()
     if not row:
         return jsonify({'chunk': '', 'status': 'unknown'})
-    return jsonify({'chunk': row['chunk'] or '', 'status': row['status']})
+    return jsonify({'chunk': row['chunk'] or '', 'status': row['status'],
+                    'finished_at': row['finished_at'] or ''})
 
 
 @app.route('/api/ansible/ping-host', methods=['POST'])

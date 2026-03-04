@@ -171,6 +171,7 @@ async function pollOutput() {
         cancelled: '<span class="badge badge-secondary" style="font-size:13px">⊘ İptal</span>',
       };
       document.getElementById('statusBadge').innerHTML = badges[d.status] || d.status;
+      if (d.finished_at) document.getElementById('finishedAt').textContent = d.finished_at;
     } else {
       setTimeout(pollOutput, 1500);
     }

@@ -141,6 +141,7 @@ function poll() {
       if (d.log) logBlock.textContent = d.log;
       if (atBot) logBlock.scrollTop = logBlock.scrollHeight;
       updateStatus(d.status);
+      if (d.finished_at) document.getElementById('finishedAt').textContent = d.finished_at;
       if (!d.running) clearInterval(pollTimer);
     })
     .catch(()=>{});
