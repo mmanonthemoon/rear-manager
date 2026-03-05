@@ -1940,7 +1940,7 @@ def server_add():
             ssh_port = 22
 
         conn = get_db()
-        conn.execute('''
+        cur = conn.execute('''
             INSERT INTO servers(label, hostname, ip_address, ssh_port, ssh_user,
                                 ssh_auth, ssh_password,
                                 become_method, become_user, become_password, become_same_pass,
@@ -1956,9 +1956,20 @@ def server_add():
             1 if d.get('become_same_pass') else 0,
             d.get('exclude_dirs', ''), d.get('notes', '')
         ))
-        conn.commit(); conn.close()
-        flash(f'Sunucu "{label}" eklendi.', 'success')
-        return redirect(url_for('servers_list'))
+        new_sid = cur.lastrowid
+        conn.commit()
+        server_row = conn.execute('SELECT * FROM servers WHERE id=?', (new_sid,)).fetchone()
+        conn.close()
+
+        # Sunucu eklenince varsayılan ayarlarla /etc/rear/local.conf otomatik oluştur
+        settings = get_settings()
+        srv_dict = dict(server_row)
+        content = generate_rear_config(srv_dict, settings)
+        job_id = create_job(new_sid, 'configure', triggered_by='auto')
+        start_job_thread(_run_configure_rear, job_id, srv_dict, content)
+
+        flash(f'Sunucu "{label}" eklendi. Varsayılan ReaR yapılandırması uygulanıyor...', 'success')
+        return redirect(url_for('job_detail', jid=job_id))
     cfg = get_settings()
     return render_template('server_form.html', server=None, title='Sunucu Ekle', cfg=cfg)
 
