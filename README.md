@@ -209,24 +209,38 @@ SQLite (rear_manager.db)
 | Ağ Erişimi | SSH (22) hedeflere | SSH + WinRM (5985/5986) |
 
 ### Hedef Sunucular
-**
+***
 ReaR ile NFS sunucusuna backup alırken açık olması gereken portlar:
 
-NFS için Gerekli Firewall Portları
-Port	Protokol	Servis	Açıklama
-111	TCP/UDP	portmapper / rpcbind	RPC servislerini keşfeder
-2049	TCP/UDP	nfsd	Ana NFS servisi
-20048	TCP/UDP	mountd	NFS mount işlemleri
-32803	TCP	nlockmgr	NFS dosya kilitleme
-32769	UDP	nlockmgr	NFS dosya kilitleme
-892	TCP/UDP	rquotad	Disk kota servisi (opsiyonel)
-Özet (En Kritikler)
+## NFS için Gerekli Firewall Portları
+
+| Port | Protokol | Servis | Açıklama |
+|------|----------|--------|----------|
+| **111** | TCP/UDP | portmapper / rpcbind | RPC servislerini keşfeder |
+| **2049** | TCP/UDP | nfsd | Ana NFS servisi |
+| **20048** | TCP/UDP | mountd | NFS mount işlemleri |
+| **32803** | TCP | nlockmgr | NFS dosya kilitleme |
+| **32769** | UDP | nlockmgr | NFS dosya kilitleme |
+| **892** | TCP/UDP | rquotad | Disk kota servisi (opsiyonel) |
+
+## Özet (En Kritikler)
+
+```
 111/tcp   111/udp   → rpcbind
 2049/tcp  2049/udp  → NFS
 20048/tcp 20048/udp → mountd
+```
 
-Önemli Not
+## Önemli Not
+
 NFSv4 kullanıyorsan sadece şu ikisi yeterli olur:
+```
+111/tcp
+2049/tcp
+```
+
+NFSv3 kullanıyorsan portmapper dinamik port atayabileceğinden `/etc/sysconfig/nfs` içinde portları sabitlemen önerilir.
+***
 
 111/tcp
 2049/tcp
