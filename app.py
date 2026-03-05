@@ -4473,11 +4473,11 @@ if __name__ == '__main__':
 
     print("=" * 64)
     print("  ReaR Manager v2.0 - Merkezi Yedekleme Yönetim Paneli")
-    print(f"  Adres     : http://0.0.0.0:5000")
+    print(f"  Adres     : http://0.0.0.0:80")
     print(f"  DB        : {DB_PATH}")
     print(f"  Yedekler  : {BACKUP_ROOT}")
     print(f"  Scheduler : {'APScheduler ✓' if HAS_SCHEDULER else 'Kurulu değil!'}")
     print(f"  LDAP/AD   : {'ldap3 ✓' if HAS_LDAP else 'Kurulu değil'}")
     print(f"  Varsayılan: admin / admin123  (Lütfen değiştirin!)")
     print("=" * 64)
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=80, debug=False, threaded=True)
