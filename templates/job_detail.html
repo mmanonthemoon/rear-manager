@@ -86,8 +86,8 @@
     <div class="flex-center">
       <span>📄 Log Çıktısı</span>
       {% if is_running %}
-      <span class="spinner"></span>
-      <span style="font-size:12px;color:#f0883e">Canlı izleniyor...</span>
+      <span class="spinner" id="liveSpinner"></span>
+      <span id="liveLabel" style="font-size:12px;color:#f0883e">Canlı izleniyor...</span>
       {% endif %}
     </div>
     <div class="btn-group">
@@ -142,7 +142,13 @@ function poll() {
       if (atBot) logBlock.scrollTop = logBlock.scrollHeight;
       updateStatus(d.status);
       if (d.finished_at) document.getElementById('finishedAt').textContent = d.finished_at;
-      if (!d.running) clearInterval(pollTimer);
+      if (!d.running) {
+        clearInterval(pollTimer);
+        const spinner = document.getElementById('liveSpinner');
+        const label   = document.getElementById('liveLabel');
+        if (spinner) spinner.remove();
+        if (label)   { label.style.color = '#3fb950'; label.textContent = '✓ Tamamlandı'; }
+      }
     })
     .catch(()=>{});
 }

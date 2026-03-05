@@ -2195,9 +2195,17 @@ def server_detail(sid):
         for fname in sorted(os.listdir(backup_dir), reverse=True):
             fpath = os.path.join(backup_dir, fname)
             try:
-                stat    = os.stat(fpath)
-                size_mb = stat.st_size / 1024 / 1024
-                mtime   = datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M')
+                st = os.stat(fpath)
+                if os.path.isdir(fpath):
+                    try:
+                        r = subprocess.run(['du', '-sb', fpath], capture_output=True, text=True, timeout=10)
+                        size_bytes = int(r.stdout.split()[0]) if r.returncode == 0 and r.stdout.strip() else 0
+                    except Exception:
+                        size_bytes = 0
+                    size_mb = size_bytes / 1024 / 1024
+                else:
+                    size_mb = st.st_size / 1024 / 1024
+                mtime = datetime.datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d %H:%M')
                 backup_files.append({'name': fname, 'size': f"{size_mb:.1f} MB", 'mtime': mtime})
             except Exception:
                 pass
