@@ -14,12 +14,13 @@
 5. [Gereksinimler](#gereksinimler)
 6. [Kurulum](#kurulum)
 7. [İlk Başlatma ve Yapılandırma](#ilk-başlatma-ve-yapılandırma)
-8. [ReaR Yedekleme Modülü](#rear-yedekleme-modülü)
-9. [Ansible Modülü](#ansible-modülü)
-10. [Offline Paket Yönetimi](#offline-paket-yönetimi)
-11. [Windows Yönetimi](#windows-yönetimi)
-12. [Kullanıcı Yönetimi ve Active Directory](#kullanıcı-yönetimi-ve-active-directory)
-13. [Sorun Giderme](#sorun-giderme)
+8. [NFS Modları](#nfs-modları)
+9. [ReaR Yedekleme Modülü](#rear-yedekleme-modülü)
+10. [Ansible Modülü](#ansible-modülü)
+11. [Offline Paket Yönetimi](#offline-paket-yönetimi)
+12. [Windows Yönetimi](#windows-yönetimi)
+13. [Kullanıcı Yönetimi ve Active Directory](#kullanıcı-yönetimi-ve-active-directory)
+14. [Sorun Giderme](#sorun-giderme)
 
 ---
 
@@ -398,9 +399,11 @@ Sol menü → **Ayarlar** → Genel sekmesi:
 | Merkezi Sunucu IP | Bu sunucunun IP'si (ör: 192.168.1.1) |
 | NFS Modu | `Merkezi Sunucu` — tüm yedekler bu sunucuya yazılır |
 | NFS Dışa Aktarım Yolu | `/srv/rear-backups` |
-| NFS Seçenekleri | `rw,sync,no_subtree_check,no_root_squash` |
+| NFS Seçenekleri | `rw,sync,no_subtree_check,no_root_squash,nohide` |
 
 → **NFS Kur** butonuna tıklayın (NFS server kurulur ve export eklenir)
+
+> Ağ kısıtlaması nedeniyle yedek sunucular harici NFS'e erişemiyorsa **Köprü (Bridge) Modunu** kullanın. Detaylar: [NFS Modları](#nfs-modları)
 
 ### 3. İlk Sunucu Ekleme
 
@@ -426,6 +429,139 @@ Become Şifresi: SSH şifresi ile aynı ✓
 ```
 
 → **Kaydet** → **Bağlantı Testi** → **ReaR Kur** → **Yapılandır** → **Yedekle**
+
+---
+
+## NFS Modları
+
+ReaR Manager üç farklı NFS mimarisini destekler. Ağ topolojinize göre uygun modu seçin.
+
+### Mod 1: Merkezi Sunucu (Varsayılan)
+
+```
+[Yedek Sunucular] ──NFS──► [rear-manager]
+                            (NFS server + depolama)
+```
+
+Yedekler doğrudan rear-manager üzerindeki diske yazılır. En basit kurulum.
+
+**Ayarlar:**
+
+| Alan | Değer |
+|------|-------|
+| NFS Modu | `Merkezi Sunucu` |
+| NFS Export Yolu | `/srv/rear-backups` |
+| NFS Seçenekleri | `rw,sync,no_subtree_check,no_root_squash,nohide` |
+
+**Kurulum:** Ayarlar → Araçlar → **NFS Kur & Yapılandır**
+
+---
+
+### Mod 2: Ayrı NFS Sunucusu
+
+```
+[Yedek Sunucular] ──NFS──► [Harici NFS Sunucu]
+                            (bağımsız NFS server)
+```
+
+Yedekler rear-manager'dan bağımsız bir NFS sunucusuna yazılır. Harici NFS sunucusunun önceden yapılandırılmış olması gerekir; **NFS Kur** butonu bu modda çalışmaz.
+
+**Ayarlar:**
+
+| Alan | Değer |
+|------|-------|
+| NFS Modu | `Ayrı NFS Sunucusu` |
+| NFS Sunucusu IP | `192.168.1.50` (harici NFS sunucusu) |
+| NFS Export Yolu | `/srv/rear-backups` (harici sunucudaki yol) |
+
+---
+
+### Mod 3: Köprü Modu (Bridge) 🌉
+
+```
+[Yedek Sunucular] ──NFS──► [rear-manager] ──NFS──► [Harici NFS Sunucu]
+  (harici NFS'e              (köprü/proxy)           (asıl depolama)
+   erişimi yok)
+```
+
+Yedek sunucular harici NFS sunucusuna ağ erişimi olmadığında kullanılır. rear-manager **köprü** görevi yaparak:
+
+1. Harici NFS sunucusunu kendi üzerine mount eder (`/mnt/rear-bridge-nfs`)
+2. Bu mount'u bind mount ile export dizinine bağlar (`/srv/rear-backups`)
+3. Export dizinini yedek sunuculara NFS ile paylaşır
+4. Yedekler harici NFS üzerinde fiziksel olarak saklanır
+
+**Gereksinimler:**
+
+- rear-manager → Harici NFS sunucu: ağ bağlantısı **olmalı**
+- Yedek sunucular → Harici NFS sunucu: ağ bağlantısı **gerekmez**
+- Yedek sunucular → rear-manager: NFS bağlantısı **olmalı**
+- rear-manager üzerinde yeterli geçici disk alanı (mount noktası için)
+
+**Ayarlar → Genel sekmesi:**
+
+| Alan | Değer |
+|------|-------|
+| NFS Modu | `Köprü Modu (Bridge)` |
+| Harici NFS Sunucu IP | `10.0.0.50` (rear-manager'ın erişebildiği NFS) |
+| Harici NFS Export Yolu | `/srv/rear-backups` (harici sunucudaki yol) |
+| Yerel Mount Noktası | `/mnt/rear-bridge-nfs` (rear-manager üzerinde oluşturulur) |
+| NFS Export Yolu | `/srv/rear-backups` (yedek sunuculara açılacak yol) |
+| NFS Seçenekleri | `rw,sync,no_subtree_check,no_root_squash,nohide` |
+
+> **Önemli:** `nohide` seçeneği, mount üzerinden re-export için zorunludur. Olmadan yedek sunucular mount noktasını boş görür.
+
+**Kurulum adımları:**
+
+1. Ayarlar → Genel → NFS Modu: `Köprü Modu` seç
+2. Harici NFS IP ve yolunu gir → **Kaydet**
+3. Ayarlar → Araçlar → **Bridge NFS Kur & Yapılandır** butonuna tıkla
+
+Buton şu işlemleri otomatik yapar:
+- `nfs-common` / `nfs-utils` ve `nfs-kernel-server` paketlerini kurar
+- Harici NFS'i `/mnt/rear-bridge-nfs`'e mount eder
+- Bind mount ile `/srv/rear-backups`'a bağlar
+- `/etc/fstab`'a kalıcı mount girişleri ekler (yeniden başlatmada kaybolmaz)
+- `/etc/exports`'u yapılandırır ve NFS servisini başlatır
+
+**Kalıcı mount — `/etc/fstab` örneği (otomatik eklenir):**
+
+```fstab
+# Harici NFS → rear-manager
+10.0.0.50:/srv/rear-backups    /mnt/rear-bridge-nfs    nfs     defaults,_netdev    0  0
+
+# Bind mount → export dizini
+/mnt/rear-bridge-nfs           /srv/rear-backups       none    bind                0  0
+```
+
+**Dikkat Edilmesi Gerekenler:**
+
+| Risk | Açıklama |
+|------|----------|
+| Tek hata noktası | rear-manager devreden çıkarsa yedeklere erişilemez |
+| Bant genişliği | Tüm yedek trafiği rear-manager üzerinden geçer |
+| Servis sırası | rear-manager servisi, NFS mount'tan sonra başlamalı (`_netdev` bunu sağlar) |
+| NFS over NFS | Ek gecikme olabilir; büyük yedeklerde süre uzayabilir |
+
+**Sorun Giderme (Bridge Modu):**
+
+```bash
+# Harici NFS bağlantısını test et
+showmount -e 10.0.0.50
+
+# Mount durumunu kontrol et
+findmnt /mnt/rear-bridge-nfs
+findmnt /srv/rear-backups
+
+# Bind mount'u elle yap (test)
+mount --bind /mnt/rear-bridge-nfs /srv/rear-backups
+
+# Export listesini görüntüle
+exportfs -v
+
+# Yedek sunucudan mount testi
+mount -t nfs 192.168.1.1:/srv/rear-backups /mnt/test
+```
 
 ---
 

@@ -354,10 +354,14 @@ def init_db():
     defaults = {
         'central_ip':          _get_local_ip(),
         # NFS ayarları
-        'nfs_mode':            'central',       # 'central' | 'separate'
+        'nfs_mode':            'central',       # 'central' | 'separate' | 'bridge'
         'nfs_server_ip':       '',              # ayrı NFS sunucusu
         'nfs_export_path':     BACKUP_ROOT,
-        'nfs_options':         'rw,sync,no_subtree_check,no_root_squash',
+        'nfs_options':         'rw,sync,no_subtree_check,no_root_squash,nohide',
+        # Köprü (bridge) modu — harici NFS'e ağ erişimi olmayan sunucular için
+        'nfs_bridge_remote_ip':    '',                     # harici NFS sunucu IP
+        'nfs_bridge_remote_path':  '/srv/rear-backups',    # harici NFS export yolu
+        'nfs_bridge_mount_point':  '/mnt/rear-bridge-nfs', # rear-manager üzerindeki mount noktası
         # ReaR varsayılanları
         'rear_output':         'ISO',
         'rear_backup':         'NETFS',
@@ -616,6 +620,9 @@ def get_nfs_target(hostname):
     Yapılandırmaya göre NFS backup URL'ini döner.
     nfs_mode='central'  → nfs://<central_ip><export_path>/<hostname>
     nfs_mode='separate' → nfs://<nfs_server_ip><export_path>/<hostname>
+    nfs_mode='bridge'   → nfs://<central_ip><export_path>/<hostname>
+                          (rear-manager köprü görevi yapar; yedek sunucular
+                           harici NFS'e değil, rear-manager'a bağlanır)
     """
     cfg = get_settings()
     mode = cfg.get('nfs_mode', 'central')
@@ -623,6 +630,7 @@ def get_nfs_target(hostname):
     if mode == 'separate' and cfg.get('nfs_server_ip', '').strip():
         ip = cfg['nfs_server_ip'].strip()
     else:
+        # 'central' ve 'bridge' modda yedek sunucular rear-manager'a bağlanır
         ip = cfg.get('central_ip', _get_local_ip())
     return f"nfs://{ip}{path}/{hostname}"
 
@@ -2677,7 +2685,8 @@ def settings_page():
             keys = ['central_ip', 'nfs_mode', 'nfs_server_ip', 'nfs_export_path',
                     'nfs_options', 'rear_output', 'rear_backup',
                     'ssh_key_path', 'retention_days', 'session_timeout',
-                    'autoresize', 'migration_mode', 'global_exclude_dirs']
+                    'autoresize', 'migration_mode', 'global_exclude_dirs',
+                    'nfs_bridge_remote_ip', 'nfs_bridge_remote_path', 'nfs_bridge_mount_point']
         elif tab == 'ad':
             keys = ['ad_enabled', 'ad_server', 'ad_port', 'ad_domain',
                     'ad_base_dn', 'ad_bind_user', 'ad_bind_password',
@@ -2742,6 +2751,104 @@ def setup_nfs():
         return r
 
     try:
+        # ── 0. Köprü (bridge) modu: harici NFS → mount → bind → export ───
+        if settings.get('nfs_mode') == 'bridge':
+            remote_ip   = settings.get('nfs_bridge_remote_ip', '').strip()
+            remote_path = settings.get('nfs_bridge_remote_path', '').strip()
+            mount_point = settings.get('nfs_bridge_mount_point', '/mnt/rear-bridge-nfs').strip()
+
+            if not remote_ip:
+                raise RuntimeError(
+                    "Köprü modu etkin fakat 'Harici NFS Sunucu IP' boş.\n"
+                    "Ayarlar → Genel sekmesinde doldurun."
+                )
+            if not remote_path:
+                raise RuntimeError(
+                    "Köprü modu etkin fakat 'Harici NFS Export Yolu' boş.\n"
+                    "Ayarlar → Genel sekmesinde doldurun."
+                )
+
+            # 0a. Mount noktası oluştur
+            os.makedirs(mount_point, exist_ok=True)
+            msgs.append(f"✓ Bridge mount noktası hazır: {mount_point}")
+
+            # 0b. NFS client paketi gerekli (nfs-common / nfs-utils)
+            is_debian_like_early = os.path.exists('/etc/debian_version')
+            if is_debian_like_early:
+                r_client = run(['apt-get', 'install', '-y', 'nfs-common'], check=False)
+                if r_client.returncode != 0:
+                    errors.append(f"nfs-common kurulamadı: {r_client.stderr.strip()}")
+            else:
+                r_client = run(['dnf', 'install', '-y', 'nfs-utils'], check=False)
+                if r_client.returncode != 0:
+                    r_client = run(['yum', 'install', '-y', 'nfs-utils'], check=False)
+
+            # 0c. Harici NFS'i mount et (zaten mount edilmişse atla)
+            r_findmnt = subprocess.run(
+                ['findmnt', '-n', '-o', 'SOURCE', mount_point],
+                capture_output=True, text=True
+            )
+            already_mounted = r_findmnt.returncode == 0 and r_findmnt.stdout.strip()
+            if not already_mounted:
+                r_mount = run(
+                    ['mount', '-t', 'nfs', f'{remote_ip}:{remote_path}', mount_point],
+                    check=False
+                )
+                if r_mount.returncode != 0:
+                    raise RuntimeError(
+                        f"Harici NFS mount başarısız: {remote_ip}:{remote_path} → {mount_point}\n"
+                        f"Hata: {r_mount.stderr.strip()}\n"
+                        f"Kontrol: rear-manager ile harici NFS aynı ağda mı?"
+                    )
+                msgs.append(f"✓ Harici NFS mount edildi: {remote_ip}:{remote_path} → {mount_point}")
+            else:
+                msgs.append(f"ℹ Harici NFS zaten mount edilmiş: {mount_point}")
+
+            # 0d. Export dizinini oluştur ve bind mount yap
+            os.makedirs(export_path, exist_ok=True)
+            r_bind_check = subprocess.run(
+                ['findmnt', '-n', '-o', 'SOURCE', export_path],
+                capture_output=True, text=True
+            )
+            already_bound = r_bind_check.returncode == 0 and r_bind_check.stdout.strip()
+            if not already_bound:
+                r_bind = run(
+                    ['mount', '--bind', mount_point, export_path],
+                    check=False
+                )
+                if r_bind.returncode != 0:
+                    raise RuntimeError(
+                        f"Bind mount başarısız: {mount_point} → {export_path}\n"
+                        f"Hata: {r_bind.stderr.strip()}"
+                    )
+                msgs.append(f"✓ Bind mount yapıldı: {mount_point} → {export_path}")
+            else:
+                msgs.append(f"ℹ Bind mount zaten aktif: {export_path}")
+
+            # 0e. /etc/fstab'a kalıcı girişleri ekle (yoksa)
+            try:
+                with open('/etc/fstab') as _f:
+                    fstab_content = _f.read()
+            except Exception:
+                fstab_content = ''
+
+            fstab_nfs_entry  = f"{remote_ip}:{remote_path}\t{mount_point}\tnfs\tdefaults,_netdev\t0\t0"
+            fstab_bind_entry = f"{mount_point}\t{export_path}\tnone\tbind\t0\t0"
+            fstab_updated = False
+
+            with open('/etc/fstab', 'a') as _f:
+                if mount_point not in fstab_content:
+                    _f.write(f"\n{fstab_nfs_entry}\n")
+                    fstab_updated = True
+                if export_path not in fstab_content or 'bind' not in fstab_content:
+                    _f.write(f"{fstab_bind_entry}\n")
+                    fstab_updated = True
+
+            if fstab_updated:
+                msgs.append("✓ /etc/fstab güncellendi (kalıcı mount girişleri eklendi)")
+            else:
+                msgs.append("ℹ /etc/fstab zaten yapılandırılmış")
+
         # ── 1. Dizin oluştur ──────────────────────────────────────────────
         os.makedirs(export_path, exist_ok=True)
         os.chmod(export_path, 0o777)

@@ -47,11 +47,14 @@
           <div class="form-group">
             <label>NFS Modu</label>
             <select name="nfs_mode" class="form-select" id="nfsModeSelect" onchange="toggleNFSMode()">
-              <option value="central" {% if settings.nfs_mode != 'separate' %}selected{% endif %}>
+              <option value="central" {% if settings.nfs_mode == 'central' or (settings.nfs_mode != 'separate' and settings.nfs_mode != 'bridge') %}selected{% endif %}>
                 🖥️ Merkezi Sunucu (bu sunucu NFS sağlayıcı)
               </option>
               <option value="separate" {% if settings.nfs_mode == 'separate' %}selected{% endif %}>
                 🗄️ Ayrı NFS Sunucusu
+              </option>
+              <option value="bridge" {% if settings.nfs_mode == 'bridge' %}selected{% endif %}>
+                🌉 Köprü Modu (Bridge) — Harici NFS erişilemeyen sunucular için
               </option>
             </select>
             <div class="form-help">Yedeklerin yazılacağı NFS sunucusunu seçin</div>
@@ -71,12 +74,42 @@
             </div>
           </div>
 
+          <div id="bridgeNfsFields" style="display:none">
+            <div class="alert alert-info" style="font-size:12px">
+              <strong>🌉 Köprü Modu:</strong> Yedek sunucular harici NFS'e ağ erişimi olmadığında
+              rear-manager köprü görevi yapar.<br>
+              Harici NFS → rear-manager'a mount → bind mount → yedek sunuculara NFS olarak paylaşılır.
+              <strong>Araçlar sekmesinden "Bridge NFS Kur" butonunu çalıştırın.</strong>
+            </div>
+            <div class="form-group">
+              <label>Harici NFS Sunucu IP</label>
+              <input type="text" name="nfs_bridge_remote_ip" class="form-control"
+                value="{{ settings.nfs_bridge_remote_ip }}"
+                placeholder="10.0.0.50">
+              <div class="form-help">rear-manager bu IP'ye ağ erişimi olan harici NFS sunucusu</div>
+            </div>
+            <div class="form-group">
+              <label>Harici NFS Export Yolu</label>
+              <input type="text" name="nfs_bridge_remote_path" class="form-control"
+                value="{{ settings.nfs_bridge_remote_path }}"
+                placeholder="/srv/rear-backups">
+              <div class="form-help">Harici NFS sunucusundaki paylaşım yolu</div>
+            </div>
+            <div class="form-group">
+              <label>Yerel Mount Noktası (rear-manager üzerinde)</label>
+              <input type="text" name="nfs_bridge_mount_point" class="form-control"
+                value="{{ settings.nfs_bridge_mount_point }}"
+                placeholder="/mnt/rear-bridge-nfs">
+              <div class="form-help">Harici NFS'in rear-manager'da mount edileceği geçici dizin</div>
+            </div>
+          </div>
+
           <div class="form-group">
-            <label>NFS Export Yolu</label>
+            <label>NFS Export Yolu (rear-manager üzerinde)</label>
             <input type="text" name="nfs_export_path" class="form-control"
               value="{{ settings.nfs_export_path }}">
             <div class="form-help">
-              Merkezi modda: Bu sunucuda oluşturulacak dizin<br>
+              Merkezi &amp; Köprü modda: Bu sunucuda yedek sunuculara açılacak dizin<br>
               Ayrı NFS modunda: NFS sunucusunda var olan paylaşım yolu
             </div>
           </div>
@@ -85,7 +118,10 @@
             <label>NFS Export Seçenekleri</label>
             <input type="text" name="nfs_options" class="form-control"
               value="{{ settings.nfs_options }}">
-            <div class="form-help">Sadece merkezi mod için /etc/exports'a yazılır</div>
+            <div class="form-help">
+              Merkezi &amp; Köprü mod için /etc/exports'a yazılır.
+              Köprü modda <code>nohide</code> seçeneği zorunludur.
+            </div>
           </div>
         </div>
       </div>
@@ -486,17 +522,32 @@
 <div>
   <!-- NFS KURULUM -->
   <div class="card">
-    <div class="card-header">🗂️ NFS Server Kurulumu (Merkezi Mod)</div>
+    <div class="card-header">🗂️ NFS Server Kurulumu</div>
     <div class="card-body">
-      <p class="text-muted" style="font-size:13px;margin-bottom:10px">
-        Bu sunucuya NFS server kurar ve <code>/etc/exports</code>'u yapılandırır.
-        <strong>Sadece merkezi NFS modunda kullanın.</strong>
-      </p>
       {% if settings.nfs_mode == 'separate' %}
       <div class="alert alert-warning" style="font-size:12px">
         ⚠️ Ayrı NFS sunucusu modu etkin. Bu buton etkisizdir.
       </div>
+      {% elif settings.nfs_mode == 'bridge' %}
+      <p class="text-muted" style="font-size:13px;margin-bottom:10px">
+        <strong>Köprü Modu:</strong> Harici NFS'i bu sunucuya mount eder,
+        bind mount ile export dizinine bağlar ve yerel NFS server başlatır.
+        Yedek sunucular bu sunucuya bağlanır, veriler harici NFS'e yazılır.
+      </p>
+      {% if not settings.nfs_bridge_remote_ip %}
+      <div class="alert alert-danger" style="font-size:12px">
+        ⛔ Harici NFS Sunucu IP'si boş. Genel sekmesinde doldurun.
+      </div>
       {% else %}
+      <form action="{{ url_for('setup_nfs') }}" method="post">
+        <button type="submit" class="btn btn-warning">🌉 Bridge NFS Kur & Yapılandır</button>
+      </form>
+      {% endif %}
+      {% else %}
+      <p class="text-muted" style="font-size:13px;margin-bottom:10px">
+        Bu sunucuya NFS server kurar ve <code>/etc/exports</code>'u yapılandırır.
+        <strong>Sadece merkezi NFS modunda kullanın.</strong>
+      </p>
       <form action="{{ url_for('setup_nfs') }}" method="post">
         <button type="submit" class="btn btn-success">🗂️ NFS Kur & Yapılandır</button>
       </form>
@@ -559,6 +610,10 @@
       <strong style="color:#f0f6ff">NFS Modu: {{ settings.nfs_mode | upper }}</strong><br>
       {% if settings.nfs_mode == 'separate' %}
       NFS Sunucusu: <code style="color:#79c0ff">{{ settings.nfs_server_ip or '?' }}</code><br>
+      {% elif settings.nfs_mode == 'bridge' %}
+      Köprü (Yedek sunucular bağlanır): <code style="color:#79c0ff">{{ settings.central_ip }} (bu sunucu)</code><br>
+      Harici NFS: <code style="color:#79c0ff">{{ settings.nfs_bridge_remote_ip or '?' }}:{{ settings.nfs_bridge_remote_path or '?' }}</code><br>
+      Yerel Mount: <code style="color:#79c0ff">{{ settings.nfs_bridge_mount_point or '/mnt/rear-bridge-nfs' }}</code><br>
       {% else %}
       NFS Sunucusu: <code style="color:#79c0ff">{{ settings.central_ip }} (bu sunucu)</code><br>
       {% endif %}
@@ -579,11 +634,13 @@
 <script>
 // NFS mode toggle
 function toggleNFSMode() {
-  const sep = document.getElementById('separateNfsFields');
-  if (sep) {
-    const mode = document.getElementById('nfsModeSelect');
-    if (mode) sep.style.display = mode.value === 'separate' ? 'block' : 'none';
-  }
+  const modeEl  = document.getElementById('nfsModeSelect');
+  const sep     = document.getElementById('separateNfsFields');
+  const bridge  = document.getElementById('bridgeNfsFields');
+  if (!modeEl) return;
+  const val = modeEl.value;
+  if (sep)    sep.style.display    = (val === 'separate') ? 'block' : 'none';
+  if (bridge) bridge.style.display = (val === 'bridge')   ? 'block' : 'none';
 }
 if (document.getElementById('nfsModeSelect')) {
   toggleNFSMode();
