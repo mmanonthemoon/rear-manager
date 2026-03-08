@@ -125,6 +125,21 @@ def _cron_describe(minute, hour, dom, month, dow):
 
 
 app.jinja_env.globals['_cron_describe'] = _cron_describe
+
+
+def _safe_dirname(hostname):
+    """
+    Hostname'i güvenli bir dizin adına dönüştürür.
+    Nokta ve özel karakterleri kaldırır/değiştirir.
+    Örnek: 'web01.example.com' → 'web01-example-com'
+             '192.168.1.49'    → '192-168-1-49'
+    """
+    safe = re.sub(r'[^a-zA-Z0-9_-]', lambda m: '-' if m.group() == '.' else '', hostname)
+    safe = re.sub(r'-{2,}', '-', safe)
+    safe = safe.strip('-')
+    return safe or hostname
+
+
 app.jinja_env.globals['_safe_dirname']  = _safe_dirname
 
 
@@ -607,20 +622,6 @@ def _get_local_ip():
 
     return '127.0.0.1'
 
-
-def _safe_dirname(hostname):
-    """
-    Hostname'i güvenli bir dizin adına dönüştürür.
-    Nokta ve özel karakterleri kaldırır/değiştirir.
-    Örnek: 'web01.example.com' → 'web01-example-com'
-    """
-    # Noktaları tire ile değiştir, harf/rakam/tire/alt çizgi dışını kaldır
-    safe = re.sub(r'[^a-zA-Z0-9_-]', lambda m: '-' if m.group() == '.' else '', hostname)
-    # Birden fazla tire yan yana gelirse tek tireye indir
-    safe = re.sub(r'-{2,}', '-', safe)
-    # Baş/son tireleri kaldır
-    safe = safe.strip('-')
-    return safe or hostname  # boş kalırsa orijinalini kullan
 
 
 def get_nfs_target(hostname):
