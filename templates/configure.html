@@ -19,37 +19,11 @@
     <div class="card-body">
       <form method="post" id="cfgForm">
 
-        <!-- NFS MODU -->
-        <div class="form-group">
-          <label>NFS Modu</label>
-          <select name="nfs_mode" class="form-select" id="nfsModeLocal" onchange="updatePreview()">
-            <option value="central" {% if settings.nfs_mode != 'separate' %}selected{% endif %}>
-              🖥️ Merkezi Sunucu ({{ settings.central_ip }})
-            </option>
-            <option value="separate" {% if settings.nfs_mode == 'separate' %}selected{% endif %}>
-              🗄️ Ayrı NFS Sunucusu
-            </option>
-          </select>
-        </div>
-
-        <div id="localCentralIP">
-          <div class="form-group">
-            <label>Merkezi/NFS Sunucu IP</label>
-            <input type="text" name="central_ip" id="centralIpInput"
-              class="form-control"
-              value="{{ settings.central_ip }}"
-              oninput="updatePreview()">
-          </div>
-        </div>
-
-        <div id="localNfsServerIP" style="display:none">
-          <div class="form-group">
-            <label>Ayrı NFS Sunucusu IP</label>
-            <input type="text" name="nfs_server_ip" id="nfsServerInput"
-              class="form-control"
-              value="{{ settings.nfs_server_ip }}"
-              oninput="updatePreview()">
-          </div>
+        <!-- YEDEK URL BİLGİSİ -->
+        <div class="alert alert-info" style="font-size:12px;margin-bottom:16px">
+          <strong>📡 Yedek URL:</strong>
+          <code>nfs://{{ settings.central_ip }}{{ settings.nfs_export_path }}/{{ server.hostname }}</code><br>
+          <span class="text-muted">NFS/SMB sunucu ve yolu Ayarlar → Genel sekmesinde yapılandırılır.</span>
         </div>
 
         <div class="form-row">
@@ -126,12 +100,6 @@
     <pre id="cfgPreview" class="code-block" style="max-height:560px;border-radius:0;border:none">{{ preview }}</pre>
   </div>
 
-  <div class="card">
-    <div class="card-header">📡 NFS Hedef URL</div>
-    <div class="card-body">
-      <code id="nfsUrlDisplay" class="code-block" style="display:block;font-size:12px">{{ nfs_url }}</code>
-    </div>
-  </div>
 </div>
 </div>
 {% endblock %}
@@ -140,29 +108,21 @@
 <script>
 const hostname = {{ server.hostname | tojson }};
 const nfsPath  = {{ settings.nfs_export_path | tojson }};
+const nfsIp    = {{ settings.central_ip | tojson }};
 const globalExcludes = {{ (settings.global_exclude_dirs or '') | tojson }};
 
 function updatePreview() {
-  const mode   = document.getElementById('nfsModeLocal').value;
-  const ip     = mode === 'separate'
-    ? (document.getElementById('nfsServerInput')?.value || '')
-    : (document.getElementById('centralIpInput')?.value || '');
   const output = document.querySelector('[name=rear_output]').value;
   const backup = document.querySelector('[name=rear_backup]').value;
   const mig    = document.getElementById('migChk').checked;
   const auto   = document.getElementById('autoChk').checked;
   const excl   = document.getElementById('serverExclude').value;
 
-  const backupUrl = `nfs://${ip}${nfsPath}/${hostname}`;
-
-  // Update NFS URL display
-  document.getElementById('nfsUrlDisplay').textContent = backupUrl;
-  document.getElementById('localNfsServerIP').style.display = mode === 'separate' ? 'block' : 'none';
-  document.getElementById('localCentralIP').style.display = mode === 'separate' ? 'none' : 'block';
+  const backupUrl = `nfs://${nfsIp}${nfsPath}/${hostname}`;
 
   let lines = [
     `# ReaR Yapılandırması - ReaR Manager v2.0`,
-    `# Sunucu: ${hostname}  |  NFS Mod: ${mode}`,
+    `# Sunucu: ${hostname}`,
     ``,
     `OUTPUT=${output}`,
     `BACKUP=${backup}`,

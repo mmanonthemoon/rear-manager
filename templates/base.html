@@ -205,7 +205,7 @@ textarea.form-control{resize:vertical;min-height:72px;font-family:'Courier New',
         <i class="nav-icon">🖥</i>Hostlar
       </a>
       <a href="{{ url_for('ansible_groups') }}"
-         class="nav-item {% if request.endpoint in ['ansible_groups','ansible_group_edit'] %}active{% endif %}">
+         class="nav-item {% if request.endpoint == 'ansible_groups' %}active{% endif %}">
         <i class="nav-icon">🗂</i>Gruplar
       </a>
       <a href="{{ url_for('ansible_playbooks') }}"
