@@ -78,7 +78,11 @@
         </button>
       </form>
       <hr class="divider">
+      {% if server.rear_installed %}
       <a href="{{ url_for('server_configure', sid=server.id) }}" class="btn btn-primary">⚙️ Yapılandır</a>
+      {% else %}
+      <button class="btn btn-primary" disabled title="Önce ReaR kurun">⚙️ Yapılandır</button>
+      {% endif %}
     </div>
   </div>
 
@@ -86,7 +90,11 @@
   <div class="card">
     <div class="card-header">💾 Yedekleme</div>
     <div class="card-body" style="padding:14px">
-      {% if not server.rear_configured %}
+      {% if not server.rear_installed %}
+      <div class="alert alert-warning" style="margin-bottom:10px;font-size:12px">
+        ⚠️ Önce ReaR kurun
+      </div>
+      {% elif not server.rear_configured %}
       <div class="alert alert-warning" style="margin-bottom:10px;font-size:12px">
         ⚠️ Önce yapılandırın
       </div>
@@ -98,11 +106,17 @@
       </p>
       <form action="{{ url_for('server_backup', sid=server.id) }}" method="post" style="margin-bottom:6px">
         <input type="hidden" name="backup_type" value="mkbackup">
-        <button class="btn btn-success" style="width:100%">💾 Tam Yedek (mkbackup)</button>
+        <button class="btn btn-success" style="width:100%"
+          {% if not server.rear_installed or not server.rear_configured %}disabled title="ReaR kurulu ve yapılandırılmış olmalı"{% endif %}>
+          💾 Tam Yedek (mkbackup)
+        </button>
       </form>
       <form action="{{ url_for('server_backup', sid=server.id) }}" method="post">
         <input type="hidden" name="backup_type" value="mkrescue">
-        <button class="btn btn-secondary" style="width:100%">💿 Sadece ISO (mkrescue)</button>
+        <button class="btn btn-secondary" style="width:100%"
+          {% if not server.rear_installed or not server.rear_configured %}disabled title="ReaR kurulu ve yapılandırılmış olmalı"{% endif %}>
+          💿 Sadece ISO (mkrescue)
+        </button>
       </form>
     </div>
   </div>
@@ -250,7 +264,8 @@
           <td class="td-nowrap">
             <div class="btn-group">
               <form action="{{ url_for('schedule_run_now', scid=s.id) }}" method="post" style="display:inline">
-                <button class="btn btn-primary btn-sm" title="Şimdi Çalıştır">▶</button>
+                <button class="btn btn-primary btn-sm" title="Şimdi Çalıştır"
+                  {% if not server.rear_installed or not server.rear_configured %}disabled title="ReaR kurulu ve yapılandırılmış olmalı"{% endif %}>▶</button>
               </form>
               <form action="{{ url_for('schedule_toggle', scid=s.id) }}" method="post" style="display:inline">
                 <button class="btn btn-{% if s.enabled %}warning{% else %}success{% endif %} btn-sm">

@@ -1727,6 +1727,9 @@ def _scheduler_run_backup(schedule_id):
     conn.close()
     if not server:
         return
+    if not server['rear_installed'] or not server['rear_configured']:
+        # ReaR hazır değil, zamanlanmış yedekleme atlandı
+        return
 
     job_id = create_job(server['id'], 'backup', triggered_by='scheduler', schedule_id=schedule_id)
     start_job_thread(_do_backup, job_id, dict(server),
@@ -2305,7 +2308,13 @@ def server_ansible_auto_add(sid):
         return redirect(url_for('server_detail', sid=sid))
 
     # Yeni Ansible host oluştur
-    host_name = server['hostname'].split('.')[0]  # kısa isim
+    # IP adresi girilmişse (örn: 192.168.1.49) noktaları tire ile değiştir,
+    # FQDN girilmişse (örn: web01.example.com) kısa ismi al.
+    _hn = server['hostname']
+    if all(p.isdigit() for p in _hn.split('.') if p):
+        host_name = _hn.replace('.', '-')   # 192.168.1.49 → 192-168-1-49
+    else:
+        host_name = _hn.split('.')[0]       # web01.example.com → web01
 
     # İsim çakışması varsa suffix ekle
     taken = conn.execute(
@@ -2451,6 +2460,10 @@ def server_configure(sid):
     settings = get_settings()
 
     if request.method == 'POST':
+        if not server['rear_installed']:
+            flash('ReaR kurulu değil. Önce ReaR kurulumunu tamamlayın.', 'warning')
+            return redirect(url_for('server_detail', sid=sid))
+
         cfg = dict(settings)
         cfg['autoresize']    = request.form.get('autoresize', '0')
         cfg['migration_mode']= request.form.get('migration_mode', '0')
@@ -2487,6 +2500,13 @@ def server_backup(sid):
     if not server:
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
+
+    if not server['rear_installed']:
+        flash('ReaR kurulu değil. Önce ReaR kurulumunu tamamlayın.', 'warning')
+        return redirect(url_for('server_detail', sid=sid))
+    if not server['rear_configured']:
+        flash('ReaR yapılandırılmamış. Önce yapılandırma uygulayın.', 'warning')
+        return redirect(url_for('server_detail', sid=sid))
 
     btype  = request.form.get('backup_type', 'mkbackup')
     job_id = create_job(sid, 'backup', triggered_by='manual')
@@ -2585,6 +2605,12 @@ def schedule_run_now(scid):
     if not sched or not server:
         flash('Bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
+    if not server['rear_installed']:
+        flash('ReaR kurulu değil. Önce ReaR kurulumunu tamamlayın.', 'warning')
+        return redirect(url_for('server_detail', sid=server['id']))
+    if not server['rear_configured']:
+        flash('ReaR yapılandırılmamış. Önce yapılandırma uygulayın.', 'warning')
+        return redirect(url_for('server_detail', sid=server['id']))
     job_id = create_job(server['id'], 'backup', triggered_by='manual-schedule', schedule_id=scid)
     start_job_thread(_do_backup, job_id, dict(server),
                      sched['backup_type'] or 'mkbackup', 'manual-schedule', scid)

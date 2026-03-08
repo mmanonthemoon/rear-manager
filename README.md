@@ -1,4 +1,4 @@
-# ReaR Manager v2.0
+# ReaR Manager v2.2
 ### Merkezi Yedekleme ve Ansible Yönetim Paneli
 
 > **Tamamen Offline Çalışır** — İnternet gerektirmez. Tek sunucu, tek süreç, sıfır dış bağımlılık.
@@ -14,13 +14,12 @@
 5. [Gereksinimler](#gereksinimler)
 6. [Kurulum](#kurulum)
 7. [İlk Başlatma ve Yapılandırma](#ilk-başlatma-ve-yapılandırma)
-8. [NFS Modları](#nfs-modları)
-9. [ReaR Yedekleme Modülü](#rear-yedekleme-modülü)
-10. [Ansible Modülü](#ansible-modülü)
-11. [Offline Paket Yönetimi](#offline-paket-yönetimi)
-12. [Windows Yönetimi](#windows-yönetimi)
-13. [Kullanıcı Yönetimi ve Active Directory](#kullanıcı-yönetimi-ve-active-directory)
-14. [Sorun Giderme](#sorun-giderme)
+8. [ReaR Yedekleme Modülü](#rear-yedekleme-modülü)
+9. [Ansible Modülü](#ansible-modülü)
+10. [Offline Paket Yönetimi](#offline-paket-yönetimi)
+11. [Windows Yönetimi](#windows-yönetimi)
+12. [Kullanıcı Yönetimi ve Active Directory](#kullanıcı-yönetimi-ve-active-directory)
+13. [Sorun Giderme](#sorun-giderme)
 
 ---
 
@@ -117,7 +116,7 @@ SQLite (rear_manager.db)
 ```
 /opt/rear-manager/
 │
-├── app.py                      ← Ana uygulama (~3600 satır, tüm route + iş mantığı)
+├── app.py                      ← Ana uygulama (~4500+ satır, tüm route + iş mantığı)
 ├── rear_manager.db             ← SQLite veritabanı (otomatik oluşur)
 ├── install.sh                  ← Otomatik kurulum betiği
 ├── prepare_offline_packages.sh ← Ubuntu offline paket hazırlama
@@ -192,7 +191,6 @@ SQLite (rear_manager.db)
 - Active Directory / LDAP entegrasyonu (opsiyonel)
 - Offline paket durumu izleme (Ayarlar paneli)
 - SSH anahtar çifti üretimi
-- NFS kurulum yardımcısı
 
 ---
 
@@ -210,44 +208,7 @@ SQLite (rear_manager.db)
 | Ağ Erişimi | SSH (22) hedeflere | SSH + WinRM (5985/5986) |
 
 ### Hedef Sunucular
-***
-ReaR ile NFS sunucusuna backup alırken açık olması gereken portlar:
 
-## NFS için Gerekli Firewall Portları
-
-| Port | Protokol | Servis | Açıklama |
-|------|----------|--------|----------|
-| **111** | TCP/UDP | portmapper / rpcbind | RPC servislerini keşfeder |
-| **2049** | TCP/UDP | nfsd | Ana NFS servisi |
-| **20048** | TCP/UDP | mountd | NFS mount işlemleri |
-| **32803** | TCP | nlockmgr | NFS dosya kilitleme |
-| **32769** | UDP | nlockmgr | NFS dosya kilitleme |
-| **892** | TCP/UDP | rquotad | Disk kota servisi (opsiyonel) |
-
-## Özet (En Kritikler)
-
-```
-111/tcp   111/udp   → rpcbind
-2049/tcp  2049/udp  → NFS
-20048/tcp 20048/udp → mountd
-```
-
-## Önemli Not
-
-NFSv4 kullanıyorsan sadece şu ikisi yeterli olur:
-```
-111/tcp
-2049/tcp
-```
-
-NFSv3 kullanıyorsan portmapper dinamik port atayabileceğinden `/etc/sysconfig/nfs` içinde portları sabitlemen önerilir.
-***
-
-111/tcp
-2049/tcp
-
-NFSv3 kullanıyorsan portmapper dinamik port atayabileceğinden /etc/sysconfig/nfs içinde portları sabitlemen önerilir.
-**
 **Linux:**
 - SSH servisi açık (port 22 veya özel)
 - Kullanıcının sudo/su yetkisi var (root değilse)
@@ -292,7 +253,7 @@ Betik şunları yapar:
 5. Ansible'ı sistem paketi veya pip ile kurar
 6. SSH anahtar çifti oluşturur
 7. systemd servisini oluşturur ve başlatır
-8. Firewall portunu açar (5000/tcp)
+8. Firewall portunu açar (80/tcp)
 
 ### Adım 3: Kurulumu Doğrulayın
 
@@ -306,8 +267,8 @@ journalctl -u rear-manager -f
 
 Beklenen çıktı:
 ```
-ReaR Manager v2.0 - Merkezi Yedekleme Yönetim Paneli
-Adres     : http://0.0.0.0:5000
+ReaR Manager v2.2 - Merkezi Yedekleme Yönetim Paneli
+Adres     : http://0.0.0.0:80
 DB        : /opt/rear-manager/rear_manager.db
 Yedekler  : /srv/rear-backups
 Scheduler : APScheduler ✓
@@ -318,7 +279,7 @@ Varsayılan: admin / admin123
 ### Adım 4: Tarayıcıdan Erişin
 
 ```
-http://<merkezi_sunucu_ip>:5000
+http://<merkezi_sunucu_ip>
 ```
 
 Varsayılan giriş:
@@ -335,7 +296,7 @@ sudo apt-get update
 sudo apt-get install -y \
     python3 python3-pip python3-venv python3-dev \
     gcc libldap2-dev libsasl2-dev libssl-dev \
-    openssh-client sshpass ansible nfs-kernel-server
+    openssh-client sshpass ansible
 
 # 2. Dizinler
 sudo mkdir -p /opt/rear-manager/{templates,static,ansible,offline-packages}
@@ -361,7 +322,7 @@ ssh-keygen -t rsa -b 4096 -f ~/.ssh/rear_manager_rsa -N "" -C "rear-manager"
 # 7. Servisi oluştur
 sudo tee /etc/systemd/system/rear-manager.service > /dev/null <<EOF
 [Unit]
-Description=ReaR Manager v2.0
+Description=ReaR Manager v2.2
 After=network.target
 
 [Service]
@@ -390,20 +351,16 @@ sudo systemctl start rear-manager
 
 `http://<ip>:5000` → Sol menü → **Şifre Değiştir**
 
-### 2. NFS Yapılandırması
+### 2. Yedek Dizini Yapılandırması
 
 Sol menü → **Ayarlar** → Genel sekmesi:
 
 | Alan | Değer |
 |------|-------|
-| Merkezi Sunucu IP | Bu sunucunun IP'si (ör: 192.168.1.1) |
-| NFS Modu | `Merkezi Sunucu` — tüm yedekler bu sunucuya yazılır |
-| NFS Dışa Aktarım Yolu | `/srv/rear-backups` |
-| NFS Seçenekleri | `rw,sync,no_subtree_check,no_root_squash,nohide` |
+| Yedek Sunucu IP / Hostname | Bu sunucunun IP'si (ör: 192.168.1.1) |
+| Yedek Dizini (Export Yolu) | `/srv/rear-backups` |
 
-→ **NFS Kur** butonuna tıklayın (NFS server kurulur ve export eklenir)
-
-> Ağ kısıtlaması nedeniyle yedek sunucular harici NFS'e erişemiyorsa **Köprü (Bridge) Modunu** kullanın. Detaylar: [NFS Modları](#nfs-modları)
+> **Not:** NFS/SMB kurulumu arayüzden yapılmaz. Linux sunucusunda `nfs-kernel-server` servisi ile `/srv/rear-backups` dizinini export etmeniz gerekir. ReaR Manager yalnızca BACKUP_URL'yi (`nfs://<ip><yol>/<hostname>`) üretir.
 
 ### 3. İlk Sunucu Ekleme
 
@@ -428,140 +385,37 @@ Become:        sudo → root
 Become Şifresi: SSH şifresi ile aynı ✓
 ```
 
-→ **Kaydet** → **Bağlantı Testi** → **ReaR Kur** → **Yapılandır** → **Yedekle**
+→ **Kaydet** → **Bağlantı Testi** → **ReaR Kur** → (ReaR kurulunca) **Yapılandır** → (Yapılandırma sonrası) **Yedekle**
 
 ---
 
-## NFS Modları
+## NFS Yapılandırması (Linux Sunucu)
 
-ReaR Manager üç farklı NFS mimarisini destekler. Ağ topolojinize göre uygun modu seçin.
-
-### Mod 1: Merkezi Sunucu (Varsayılan)
-
-```
-[Yedek Sunucular] ──NFS──► [rear-manager]
-                            (NFS server + depolama)
-```
-
-Yedekler doğrudan rear-manager üzerindeki diske yazılır. En basit kurulum.
-
-**Ayarlar:**
-
-| Alan | Değer |
-|------|-------|
-| NFS Modu | `Merkezi Sunucu` |
-| NFS Export Yolu | `/srv/rear-backups` |
-| NFS Seçenekleri | `rw,sync,no_subtree_check,no_root_squash,nohide` |
-
-**Kurulum:** Ayarlar → Araçlar → **NFS Kur & Yapılandır**
-
----
-
-### Mod 2: Ayrı NFS Sunucusu
-
-```
-[Yedek Sunucular] ──NFS──► [Harici NFS Sunucu]
-                            (bağımsız NFS server)
-```
-
-Yedekler rear-manager'dan bağımsız bir NFS sunucusuna yazılır. Harici NFS sunucusunun önceden yapılandırılmış olması gerekir; **NFS Kur** butonu bu modda çalışmaz.
-
-**Ayarlar:**
-
-| Alan | Değer |
-|------|-------|
-| NFS Modu | `Ayrı NFS Sunucusu` |
-| NFS Sunucusu IP | `192.168.1.50` (harici NFS sunucusu) |
-| NFS Export Yolu | `/srv/rear-backups` (harici sunucudaki yol) |
-
----
-
-### Mod 3: Köprü Modu (Bridge) 🌉
-
-```
-[Yedek Sunucular] ──NFS──► [rear-manager] ──NFS──► [Harici NFS Sunucu]
-  (harici NFS'e              (köprü/proxy)           (asıl depolama)
-   erişimi yok)
-```
-
-Yedek sunucular harici NFS sunucusuna ağ erişimi olmadığında kullanılır. rear-manager **köprü** görevi yaparak:
-
-1. Harici NFS sunucusunu kendi üzerine mount eder (`/mnt/rear-bridge-nfs`)
-2. Bu mount'u bind mount ile export dizinine bağlar (`/srv/rear-backups`)
-3. Export dizinini yedek sunuculara NFS ile paylaşır
-4. Yedekler harici NFS üzerinde fiziksel olarak saklanır
-
-**Gereksinimler:**
-
-- rear-manager → Harici NFS sunucu: ağ bağlantısı **olmalı**
-- Yedek sunucular → Harici NFS sunucu: ağ bağlantısı **gerekmez**
-- Yedek sunucular → rear-manager: NFS bağlantısı **olmalı**
-- rear-manager üzerinde yeterli geçici disk alanı (mount noktası için)
-
-**Ayarlar → Genel sekmesi:**
-
-| Alan | Değer |
-|------|-------|
-| NFS Modu | `Köprü Modu (Bridge)` |
-| Harici NFS Sunucu IP | `10.0.0.50` (rear-manager'ın erişebildiği NFS) |
-| Harici NFS Export Yolu | `/srv/rear-backups` (harici sunucudaki yol) |
-| Yerel Mount Noktası | `/mnt/rear-bridge-nfs` (rear-manager üzerinde oluşturulur) |
-| NFS Export Yolu | `/srv/rear-backups` (yedek sunuculara açılacak yol) |
-| NFS Seçenekleri | `rw,sync,no_subtree_check,no_root_squash,nohide` |
-
-> **Önemli:** `nohide` seçeneği, mount üzerinden re-export için zorunludur. Olmadan yedek sunucular mount noktasını boş görür.
-
-**Kurulum adımları:**
-
-1. Ayarlar → Genel → NFS Modu: `Köprü Modu` seç
-2. Harici NFS IP ve yolunu gir → **Kaydet**
-3. Ayarlar → Araçlar → **Bridge NFS Kur & Yapılandır** butonuna tıkla
-
-Buton şu işlemleri otomatik yapar:
-- `nfs-common` / `nfs-utils` ve `nfs-kernel-server` paketlerini kurar
-- Harici NFS'i `/mnt/rear-bridge-nfs`'e mount eder
-- Bind mount ile `/srv/rear-backups`'a bağlar
-- `/etc/fstab`'a kalıcı mount girişleri ekler (yeniden başlatmada kaybolmaz)
-- `/etc/exports`'u yapılandırır ve NFS servisini başlatır
-
-**Kalıcı mount — `/etc/fstab` örneği (otomatik eklenir):**
-
-```fstab
-# Harici NFS → rear-manager
-10.0.0.50:/srv/rear-backups    /mnt/rear-bridge-nfs    nfs     defaults,_netdev    0  0
-
-# Bind mount → export dizini
-/mnt/rear-bridge-nfs           /srv/rear-backups       none    bind                0  0
-```
-
-**Dikkat Edilmesi Gerekenler:**
-
-| Risk | Açıklama |
-|------|----------|
-| Tek hata noktası | rear-manager devreden çıkarsa yedeklere erişilemez |
-| Bant genişliği | Tüm yedek trafiği rear-manager üzerinden geçer |
-| Servis sırası | rear-manager servisi, NFS mount'tan sonra başlamalı (`_netdev` bunu sağlar) |
-| NFS over NFS | Ek gecikme olabilir; büyük yedeklerde süre uzayabilir |
-
-**Sorun Giderme (Bridge Modu):**
+ReaR Manager, NFS kurulumunu kendiniz yapmanızı bekler. Merkezi sunucuda şu komutları çalıştırın:
 
 ```bash
-# Harici NFS bağlantısını test et
-showmount -e 10.0.0.50
+# Ubuntu/Debian
+apt-get install -y nfs-kernel-server
+mkdir -p /srv/rear-backups
+chmod 777 /srv/rear-backups
 
-# Mount durumunu kontrol et
-findmnt /mnt/rear-bridge-nfs
-findmnt /srv/rear-backups
-
-# Bind mount'u elle yap (test)
-mount --bind /mnt/rear-bridge-nfs /srv/rear-backups
-
-# Export listesini görüntüle
-exportfs -v
-
-# Yedek sunucudan mount testi
-mount -t nfs 192.168.1.1:/srv/rear-backups /mnt/test
+# /etc/exports dosyasına ekle:
+echo "/srv/rear-backups  *(rw,sync,no_subtree_check,no_root_squash)" >> /etc/exports
+exportfs -ra
+systemctl enable --now nfs-kernel-server
 ```
+
+```bash
+# RHEL/Rocky/AlmaLinux
+dnf install -y nfs-utils
+mkdir -p /srv/rear-backups
+chmod 777 /srv/rear-backups
+echo "/srv/rear-backups  *(rw,sync,no_subtree_check,no_root_squash)" >> /etc/exports
+exportfs -ra
+systemctl enable --now nfs-server
+```
+
+ReaR Manager'da **Ayarlar → Genel** sekmesinden Yedek Sunucu IP ve Yedek Dizini girin. Uygulama BACKUP_URL'yi otomatik üretir: `nfs://<ip><yol>/<hostname>`
 
 ---
 
@@ -895,16 +749,20 @@ Test-WSMan -ComputerName localhost
 Restart-Service WinRM
 ```
 
-### NFS Mount Edilemiyor
+### NFS Mount Edilemiyor / Yedek Başarısız
 
 ```bash
-# NFS export kontrol:
+# NFS export kontrol (merkezi sunucuda):
 exportfs -v
+
+# NFS servisi çalışıyor mu?
+systemctl status nfs-kernel-server   # Ubuntu/Debian
+systemctl status nfs-server          # RHEL/Rocky
 
 # Hedef sunucudan mount testi:
 mount -t nfs 192.168.1.1:/srv/rear-backups /mnt/test
 
-# Hata varsa:
+# Export listesini gör:
 showmount -e 192.168.1.1
 ```
 
@@ -965,19 +823,31 @@ journalctl -u rear-manager -n 100 --no-pager
 | Active Directory | ✅ Tam işlevsel |
 | Zamanlayıcı | ✅ Tam işlevsel |
 
-**Test Kapsamı:** 29 sayfa tam render testi, 37 fonksiyonel unit test — tamamı başarılı.
 
 ---
 
 ## Değişiklik Günlüğü
 
-### v2.1 (Son Güncellemeler)
+### v2.2 (Son Güncellemeler)
 
 #### Yeni Özellikler
-- **Otomatik ReaR Yapılandırma:** Sunucu eklendiğinde `Yapılandır` butonuna basmaya gerek kalmadan, global ayarlardan varsayılan `/etc/rear/local.conf` içeriği üretilir ve arka planda configure job otomatik başlatılır. Kullanıcı dilerse değişiklik yapıp `Yapılandır` butonuyla yeniden uygulayabilir.
-- **Otomatik NFS Hedef Dizini:** `rear mkbackup` çalıştırılmadan önce NFS sunucusundaki hedef dizin (`/srv/rear-backups/<hostname>`) yoksa otomatik oluşturulur; "No such file or directory" hatası giderildi.
+- **NFS kurulumu kaldırıldı:** NFS/SMB yapılandırması artık arayüzden yapılmıyor; Linux sunucusunda kendiniz yapılandırırsınız. Ayarlar → Genel'den yalnızca Yedek Sunucu IP ve Yedek Dizini girilir.
+- **Yedek klasörü güvenli adlandırma:** Hostname'deki nokta ve özel karakterler (`web01.example.com` → `web01-example-com`) güvenli dizin adına dönüştürülür.
+- **Ansible otomatik ekleme düzeltmesi:** IP adresi hostname olarak girildiğinde (`192.168.1.49`) Ansible host adı artık tam IP'den türetilir (`192-168-1-49`), `192` olarak kesilmez.
 
 #### Hata Düzeltmeleri
-- **Log izleme göstergesi:** İş tamamlandığında "Canlı izleniyor..." spinner'ı DOM'dan kaldırılarak "✓ Tamamlandı" olarak güncelleniyor.
-- **Yedek boyutu hesaplama:** Alt dizinler için `os.stat().st_size` yerine `du -sb` kullanılarak gerçek dosya boyutu doğru gösteriliyor (önceden 0.0 MB görünüyordu).
-- Çeşitli SSH bağlantısı, become yetkilendirmesi ve UI hataları giderildi (toplam 12 düzeltme).
+- **ReaR kurulum kontrolü:** Yedekleme ve yapılandırma butonları artık ReaR kurulu/yapılandırılmış olmadan çalışmaz; hem UI'da devre dışı bırakılır hem backend'de engellenir.
+- **Zamanlanmış yedekleme güvenliği:** ReaR kurulu/yapılandırılmamış sunucularda zamanlayıcı sessizce atlar, hata oluşturmaz.
+- **Offline kurulum takılma sorunu:** `dpkg -i` komutları artık `DEBIAN_FRONTEND=noninteractive` ile çalışır; debconf interaktif promptları kurulumu askıya almaz.
+
+### v2.1
+
+#### Yeni Özellikler
+- **Otomatik ReaR Yapılandırma:** Sunucu eklendiğinde global ayarlardan varsayılan `/etc/rear/local.conf` otomatik uygulanır.
+- **Otomatik NFS Hedef Dizini:** `rear mkbackup` öncesi hedef dizin yoksa otomatik oluşturulur.
+- **NFS Köprü (Bridge) Modu:** Harici NFS'e doğrudan erişemeyen sunucular için köprü mimarisi desteği eklendi.
+
+#### Hata Düzeltmeleri
+- Log izleme spinner'ı iş tamamlanınca "✓ Tamamlandı" olarak güncellenir.
+- Yedek boyutu `du -sb` ile doğru hesaplanır (önceden 0.0 MB görünüyordu).
+- SSH bağlantısı, become yetkilendirmesi ve UI hataları giderildi.
