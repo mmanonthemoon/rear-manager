@@ -352,16 +352,8 @@ def init_db():
 
     # ── Varsayılan ayarlar ────────────────────────────────
     defaults = {
-        'central_ip':          _get_local_ip(),
-        # NFS ayarları
-        'nfs_mode':            'central',       # 'central' | 'separate' | 'bridge'
-        'nfs_server_ip':       '',              # ayrı NFS sunucusu
-        'nfs_export_path':     BACKUP_ROOT,
-        'nfs_options':         'rw,sync,no_subtree_check,no_root_squash,nohide',
-        # Köprü (bridge) modu — harici NFS'e ağ erişimi olmayan sunucular için
-        'nfs_bridge_remote_ip':    '',                     # harici NFS sunucu IP
-        'nfs_bridge_remote_path':  '/srv/rear-backups',    # harici NFS export yolu
-        'nfs_bridge_mount_point':  '/mnt/rear-bridge-nfs', # rear-manager üzerindeki mount noktası
+        'central_ip':          _get_local_ip(),   # Yedek sunucu IP/hostname (NFS/SMB manuel yapılandırılır)
+        'nfs_export_path':     BACKUP_ROOT,        # Yedeklerin yazılacağı dizin yolu
         # ReaR varsayılanları
         'rear_output':         'ISO',
         'rear_backup':         'NETFS',
@@ -618,20 +610,11 @@ def _get_local_ip():
 def get_nfs_target(hostname):
     """
     Yapılandırmaya göre NFS backup URL'ini döner.
-    nfs_mode='central'  → nfs://<central_ip><export_path>/<hostname>
-    nfs_mode='separate' → nfs://<nfs_server_ip><export_path>/<hostname>
-    nfs_mode='bridge'   → nfs://<central_ip><export_path>/<hostname>
-                          (rear-manager köprü görevi yapar; yedek sunucular
-                           harici NFS'e değil, rear-manager'a bağlanır)
+    nfs://<central_ip><nfs_export_path>/<hostname>
     """
-    cfg = get_settings()
-    mode = cfg.get('nfs_mode', 'central')
-    path = cfg.get('nfs_export_path', BACKUP_ROOT)
-    if mode == 'separate' and cfg.get('nfs_server_ip', '').strip():
-        ip = cfg['nfs_server_ip'].strip()
-    else:
-        # 'central' ve 'bridge' modda yedek sunucular rear-manager'a bağlanır
-        ip = cfg.get('central_ip', _get_local_ip())
+    cfg  = get_settings()
+    ip   = cfg.get('central_ip', _get_local_ip()).strip() or _get_local_ip()
+    path = cfg.get('nfs_export_path', BACKUP_ROOT).strip() or BACKUP_ROOT
     return f"nfs://{ip}{path}/{hostname}"
 
 
@@ -939,18 +922,20 @@ def ssh_install_offline_ubuntu(server_dict, job_id):
     log("  (dpkg -i ile offline kurulum — internet gerekmez)")
 
     # Tek komut bloğu: mkdir, tar xz, dpkg, dpkg (2. pass), temizlik
+    # DEBIAN_FRONTEND=noninteractive: debconf interaktif prompt'larını engeller
+    # --force-confdef --force-confnew: mevcut config dosyaları için soru sormaz
     install_script = f"""
-set -e
+export DEBIAN_FRONTEND=noninteractive
+export DEBCONF_NONINTERACTIVE_SEEN=true
 mkdir -p {remote_tmp_dir}
-cd {remote_tmp_dir}
 echo "[1/4] Arşiv açılıyor..."
-tar xzf {remote_tar} -C {remote_tmp_dir}/
+tar xzf {remote_tar} -C {remote_tmp_dir}/ || exit 1
 echo "[2/4] dpkg ile kuruluyor (1. geçiş)..."
-dpkg -i {remote_tmp_dir}/*.deb 2>&1 || true
+DEBIAN_FRONTEND=noninteractive dpkg --force-confdef --force-confnew -i {remote_tmp_dir}/*.deb 2>&1 || true
 echo "[3/4] dpkg ikinci geçiş (bağımlılık sırası)..."
-dpkg -i {remote_tmp_dir}/*.deb 2>&1 || true
+DEBIAN_FRONTEND=noninteractive dpkg --force-confdef --force-confnew -i {remote_tmp_dir}/*.deb 2>&1 || true
 echo "[4/4] Bağımlılıklar düzeltiliyor..."
-DEBIAN_FRONTEND=noninteractive apt-get install -f -y --no-install-recommends 2>&1 || true
+DEBIAN_FRONTEND=noninteractive apt-get install -f -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confnew" --no-install-recommends 2>&1 || true
 echo "Temizleniyor..."
 rm -rf {remote_tmp_dir} {remote_tar}
 echo "KURULUM_TAMAM"
@@ -1324,7 +1309,6 @@ def generate_rear_config(server, cfg, extra_server_exclude=''):
         "# ReaR Yapılandırması - ReaR Manager v2.0 tarafından oluşturuldu",
         f"# Sunucu  : {server['hostname']}",
         f"# Tarih   : {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        f"# NFS Mod : {cfg.get('nfs_mode','central')}",
         "",
         f"OUTPUT={output_type}",
         f"BACKUP={backup_type}",
@@ -1458,8 +1442,12 @@ def _run_install_rear(job_id, server_dict):
         log("► [1/2] apt-get ile kurulum deneniyor...")
         apt_cmd = (
             'export DEBIAN_FRONTEND=noninteractive && '
+            'export DEBCONF_NONINTERACTIVE_SEEN=true && '
             'apt-get update -q 2>&1 | tail -3 && '
-            'apt-get install -y rear nfs-common genisoimage xorriso '
+            'apt-get install -y '
+            '-o Dpkg::Options::="--force-confdef" '
+            '-o Dpkg::Options::="--force-confnew" '
+            'rear nfs-common genisoimage xorriso '
             'syslinux syslinux-common isolinux 2>&1'
         )
         ec_apt, _ = ssh_exec_stream(server_dict, apt_cmd, log)
@@ -1511,8 +1499,12 @@ def _run_install_rear(job_id, server_dict):
         log("► Debian tespit edildi — apt-get ile kurulum...")
         ec, _ = ssh_exec_stream(server_dict, (
             'export DEBIAN_FRONTEND=noninteractive && '
+            'export DEBCONF_NONINTERACTIVE_SEEN=true && '
             'apt-get update -q && '
-            'apt-get install -y rear nfs-common genisoimage xorriso syslinux syslinux-common'
+            'apt-get install -y '
+            '-o Dpkg::Options::="--force-confdef" '
+            '-o Dpkg::Options::="--force-confnew" '
+            'rear nfs-common genisoimage xorriso syslinux syslinux-common'
         ), log)
         if ec != 0:
             log(f"[HATA] Kurulum başarısız (kod: {ec})")
@@ -1539,8 +1531,12 @@ def _run_install_rear(job_id, server_dict):
         log("[UYARI] Bilinmeyen OS — apt-get ile deneniyor...")
         ec, _ = ssh_exec_stream(server_dict, (
             'export DEBIAN_FRONTEND=noninteractive && '
+            'export DEBCONF_NONINTERACTIVE_SEEN=true && '
             'apt-get update -q && '
-            'apt-get install -y rear nfs-common genisoimage xorriso || '
+            'apt-get install -y '
+            '-o Dpkg::Options::="--force-confdef" '
+            '-o Dpkg::Options::="--force-confnew" '
+            'rear nfs-common genisoimage xorriso || '
             '(dnf install -y epel-release 2>/dev/null; dnf install -y rear nfs-utils genisoimage)'
         ), log)
         if ec != 0:
@@ -1620,9 +1616,9 @@ def _do_backup(job_id, server_dict, backup_cmd='mkbackup', triggered_by='manual'
     log("")
 
     cfg = get_settings()
-    nfs_ip = cfg.get('nfs_server_ip') if cfg.get('nfs_mode') == 'separate' else cfg.get('central_ip')
-    log(f"► NFS Sunucusu: {nfs_ip} ({cfg.get('nfs_mode','central')} mod)")
-    log(f"► NFS Yol     : {cfg.get('nfs_export_path', BACKUP_ROOT)}/{server_dict['hostname']}")
+    nfs_ip = cfg.get('central_ip', _get_local_ip())
+    log(f"► Yedek Sunucu: {nfs_ip}")
+    log(f"► Yedek Yolu  : {cfg.get('nfs_export_path', BACKUP_ROOT)}/{server_dict['hostname']}")
     log("")
 
     hostname   = server_dict['hostname']
@@ -2444,9 +2440,6 @@ def server_configure(sid):
         cfg['migration_mode']= request.form.get('migration_mode', '0')
         cfg['rear_output']   = request.form.get('rear_output', 'ISO')
         cfg['rear_backup']   = request.form.get('rear_backup', 'NETFS')
-        cfg['central_ip']    = request.form.get('central_ip', settings.get('central_ip', ''))
-        cfg['nfs_mode']      = request.form.get('nfs_mode', 'central')
-        cfg['nfs_server_ip'] = request.form.get('nfs_server_ip', '')
 
         # Sunucuya özel hariç dizinleri kaydet
         server_excl = request.form.get('server_exclude_dirs', '')
@@ -2465,9 +2458,8 @@ def server_configure(sid):
 
     srv_dict = dict(server)
     preview  = generate_rear_config(srv_dict, settings)
-    nfs_url  = get_nfs_target(server['hostname'])
     return render_template('configure.html', server=srv_dict,
-                           settings=settings, preview=preview, nfs_url=nfs_url)
+                           settings=settings, preview=preview)
 
 
 @app.route('/servers/<int:sid>/backup', methods=['POST'])
@@ -2682,11 +2674,10 @@ def settings_page():
         conn = get_db()
 
         if tab == 'general':
-            keys = ['central_ip', 'nfs_mode', 'nfs_server_ip', 'nfs_export_path',
-                    'nfs_options', 'rear_output', 'rear_backup',
+            keys = ['central_ip', 'nfs_export_path',
+                    'rear_output', 'rear_backup',
                     'ssh_key_path', 'retention_days', 'session_timeout',
-                    'autoresize', 'migration_mode', 'global_exclude_dirs',
-                    'nfs_bridge_remote_ip', 'nfs_bridge_remote_path', 'nfs_bridge_mount_point']
+                    'autoresize', 'migration_mode', 'global_exclude_dirs']
         elif tab == 'ad':
             keys = ['ad_enabled', 'ad_server', 'ad_port', 'ad_domain',
                     'ad_base_dn', 'ad_bind_user', 'ad_bind_password',
@@ -2727,285 +2718,10 @@ def settings_page():
 @login_required
 @admin_required
 def setup_nfs():
-    """
-    Merkezi sunucuya NFS server kur ve export oluştur.
-    - Ubuntu/Debian : nfs-kernel-server  → servis: nfs-kernel-server veya nfs-server
-    - RHEL/CentOS   : nfs-utils          → servis: nfs-server
-    - SUSE          : nfs-kernel-server  → servis: nfsserver
-    """
-    settings    = get_settings()
-    export_path = settings.get('nfs_export_path', BACKUP_ROOT)
-    nfs_opts    = settings.get('nfs_options', 'rw,sync,no_subtree_check,no_root_squash')
-    msgs        = []
-    errors      = []
-
-    def run(cmd, check=True):
-        """Komut çalıştır, stdout+stderr döner."""
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        if check and r.returncode != 0:
-            raise RuntimeError(
-                f"Komut başarısız: {' '.join(cmd)}\n"
-                f"stdout: {r.stdout.strip()}\n"
-                f"stderr: {r.stderr.strip()}"
-            )
-        return r
-
-    try:
-        # ── 0. Köprü (bridge) modu: harici NFS → mount → bind → export ───
-        if settings.get('nfs_mode') == 'bridge':
-            remote_ip   = settings.get('nfs_bridge_remote_ip', '').strip()
-            remote_path = settings.get('nfs_bridge_remote_path', '').strip()
-            mount_point = settings.get('nfs_bridge_mount_point', '/mnt/rear-bridge-nfs').strip()
-
-            if not remote_ip:
-                raise RuntimeError(
-                    "Köprü modu etkin fakat 'Harici NFS Sunucu IP' boş.\n"
-                    "Ayarlar → Genel sekmesinde doldurun."
-                )
-            if not remote_path:
-                raise RuntimeError(
-                    "Köprü modu etkin fakat 'Harici NFS Export Yolu' boş.\n"
-                    "Ayarlar → Genel sekmesinde doldurun."
-                )
-
-            # 0a. Mount noktası oluştur
-            os.makedirs(mount_point, exist_ok=True)
-            msgs.append(f"✓ Bridge mount noktası hazır: {mount_point}")
-
-            # 0b. NFS client paketi gerekli (nfs-common / nfs-utils)
-            is_debian_like_early = os.path.exists('/etc/debian_version')
-            if is_debian_like_early:
-                r_client = run(['apt-get', 'install', '-y', 'nfs-common'], check=False)
-                if r_client.returncode != 0:
-                    errors.append(f"nfs-common kurulamadı: {r_client.stderr.strip()}")
-            else:
-                r_client = run(['dnf', 'install', '-y', 'nfs-utils'], check=False)
-                if r_client.returncode != 0:
-                    r_client = run(['yum', 'install', '-y', 'nfs-utils'], check=False)
-
-            # 0c. Harici NFS'i mount et (zaten mount edilmişse atla)
-            r_findmnt = subprocess.run(
-                ['findmnt', '-n', '-o', 'SOURCE', mount_point],
-                capture_output=True, text=True
-            )
-            already_mounted = r_findmnt.returncode == 0 and r_findmnt.stdout.strip()
-            if not already_mounted:
-                r_mount = run(
-                    ['mount', '-t', 'nfs', f'{remote_ip}:{remote_path}', mount_point],
-                    check=False
-                )
-                if r_mount.returncode != 0:
-                    raise RuntimeError(
-                        f"Harici NFS mount başarısız: {remote_ip}:{remote_path} → {mount_point}\n"
-                        f"Hata: {r_mount.stderr.strip()}\n"
-                        f"Kontrol: rear-manager ile harici NFS aynı ağda mı?"
-                    )
-                msgs.append(f"✓ Harici NFS mount edildi: {remote_ip}:{remote_path} → {mount_point}")
-            else:
-                msgs.append(f"ℹ Harici NFS zaten mount edilmiş: {mount_point}")
-
-            # 0d. Export dizinini oluştur ve bind mount yap
-            os.makedirs(export_path, exist_ok=True)
-            r_bind_check = subprocess.run(
-                ['findmnt', '-n', '-o', 'SOURCE', export_path],
-                capture_output=True, text=True
-            )
-            already_bound = r_bind_check.returncode == 0 and r_bind_check.stdout.strip()
-            if not already_bound:
-                r_bind = run(
-                    ['mount', '--bind', mount_point, export_path],
-                    check=False
-                )
-                if r_bind.returncode != 0:
-                    raise RuntimeError(
-                        f"Bind mount başarısız: {mount_point} → {export_path}\n"
-                        f"Hata: {r_bind.stderr.strip()}"
-                    )
-                msgs.append(f"✓ Bind mount yapıldı: {mount_point} → {export_path}")
-            else:
-                msgs.append(f"ℹ Bind mount zaten aktif: {export_path}")
-
-            # 0e. /etc/fstab'a kalıcı girişleri ekle (yoksa)
-            try:
-                with open('/etc/fstab') as _f:
-                    fstab_content = _f.read()
-            except Exception:
-                fstab_content = ''
-
-            fstab_nfs_entry  = f"{remote_ip}:{remote_path}\t{mount_point}\tnfs\tdefaults,_netdev\t0\t0"
-            fstab_bind_entry = f"{mount_point}\t{export_path}\tnone\tbind\t0\t0"
-            fstab_updated = False
-
-            with open('/etc/fstab', 'a') as _f:
-                if mount_point not in fstab_content:
-                    _f.write(f"\n{fstab_nfs_entry}\n")
-                    fstab_updated = True
-                if export_path not in fstab_content or 'bind' not in fstab_content:
-                    _f.write(f"{fstab_bind_entry}\n")
-                    fstab_updated = True
-
-            if fstab_updated:
-                msgs.append("✓ /etc/fstab güncellendi (kalıcı mount girişleri eklendi)")
-            else:
-                msgs.append("ℹ /etc/fstab zaten yapılandırılmış")
-
-        # ── 1. Dizin oluştur ──────────────────────────────────────────────
-        os.makedirs(export_path, exist_ok=True)
-        os.chmod(export_path, 0o777)
-        msgs.append(f"✓ Dizin hazır: {export_path}")
-
-        # ── 2. NFS server paketini kur ────────────────────────────────────
-        is_debian_like = os.path.exists('/etc/debian_version')
-        is_redhat_like = os.path.exists('/etc/redhat-release') or os.path.exists('/etc/centos-release')
-        is_suse_like   = False
-        if os.path.exists('/etc/os-release'):
-            try:
-                with open('/etc/os-release') as _f:
-                    is_suse_like = 'suse' in _f.read().lower()
-            except Exception:
-                pass
-
-        if is_debian_like:
-            r = run(['apt-get', 'install', '-y', 'nfs-kernel-server'], check=False)
-            if r.returncode != 0:
-                raise RuntimeError(
-                    f"nfs-kernel-server kurulamadı.\n"
-                    f"Hata: {r.stderr.strip() or r.stdout.strip()}\n"
-                    f"İpucu: 'apt-get update' çalıştırın veya ağ bağlantısını kontrol edin."
-                )
-        elif is_redhat_like:
-            r = run(['dnf', 'install', '-y', 'nfs-utils'], check=False)
-            if r.returncode != 0:
-                r = run(['yum', 'install', '-y', 'nfs-utils'], check=False)
-                if r.returncode != 0:
-                    raise RuntimeError(f"nfs-utils kurulamadı: {r.stderr.strip()}")
-        else:
-            r = run(['zypper', 'install', '-y', 'nfs-kernel-server'], check=False)
-            if r.returncode != 0:
-                raise RuntimeError(f"nfs-kernel-server kurulamadı: {r.stderr.strip()}")
-
-        msgs.append("✓ NFS server paketi kuruldu")
-
-        # ── 3. /etc/exports güncelle ──────────────────────────────────────
-        export_line = f"{export_path}\t*({nfs_opts})\n"
-
-        try:
-            if os.path.exists('/etc/exports'):
-                with open('/etc/exports') as _f:
-                    existing = _f.read()
-            else:
-                existing = ''
-        except Exception as e:
-            raise RuntimeError(f"/etc/exports okunamadı: {e}")
-
-        if export_path not in existing:
-            try:
-                with open('/etc/exports', 'a') as f:
-                    f.write(export_line)
-                msgs.append(f"✓ /etc/exports güncellendi: {export_line.strip()}")
-            except PermissionError:
-                raise RuntimeError(
-                    "/etc/exports yazma izni yok.\n"
-                    "Uygulama root olarak çalışmıyor olabilir.\n"
-                    "Kontrol: systemctl show rear-manager | grep User"
-                )
-            except Exception as e:
-                raise RuntimeError(f"/etc/exports yazılamadı: {e}")
-        else:
-            # Mevcut satırı güncelle (farklı seçenekler olabilir)
-            lines = existing.splitlines(keepends=True)
-            new_lines = []
-            updated = False
-            for ln in lines:
-                if ln.strip().startswith(export_path):
-                    new_lines.append(export_line)
-                    updated = True
-                else:
-                    new_lines.append(ln)
-            if updated:
-                with open('/etc/exports', 'w') as f:
-                    f.writelines(new_lines)
-                msgs.append(f"✓ /etc/exports satırı güncellendi: {export_line.strip()}")
-            else:
-                msgs.append("ℹ /etc/exports zaten doğru yapılandırılmış")
-
-        # ── 4. exportfs -ra ───────────────────────────────────────────────
-        r = run(['exportfs', '-ra'], check=False)
-        if r.returncode != 0:
-            # exportfs yoksa veya nfsd henüz başlamadıysa → servis başlatıldıktan sonra tekrar çalışacak
-            errors.append(f"exportfs -ra uyarısı: {r.stderr.strip() or r.stdout.strip()}")
-        else:
-            msgs.append("✓ exportfs -ra çalıştırıldı")
-
-        # ── 5. NFS servisini başlat ───────────────────────────────────────
-        # Servis adını tespit et (dağıtıma göre farklı)
-        nfs_service = None
-        for svc in ('nfs-kernel-server', 'nfs-server', 'nfsserver', 'nfs'):
-            r = subprocess.run(['systemctl', 'list-unit-files', f'{svc}.service'],
-                               capture_output=True, text=True)
-            if svc in r.stdout and 'not-found' not in r.stdout:
-                nfs_service = svc
-                break
-
-        if not nfs_service:
-            raise RuntimeError(
-                "NFS servis adı bulunamadı. Paket kurulumu tamamlanmamış olabilir.\n"
-                "Kontrol: systemctl list-unit-files | grep nfs"
-            )
-
-        r = run(['systemctl', 'enable', '--now', nfs_service], check=False)
-        if r.returncode != 0:
-            # restart dene
-            r = run(['systemctl', 'restart', nfs_service], check=False)
-            if r.returncode != 0:
-                raise RuntimeError(
-                    f"NFS servisi ({nfs_service}) başlatılamadı.\n"
-                    f"Hata: {r.stderr.strip()}\n"
-                    f"Kontrol: journalctl -u {nfs_service} -n 20"
-                )
-
-        msgs.append(f"✓ NFS servisi aktif: {nfs_service}")
-
-        # exportfs -ra'yı servis başlatıldıktan sonra tekrar çalıştır
-        subprocess.run(['exportfs', '-ra'], capture_output=True)
-        subprocess.run(['exportfs', '-v'], capture_output=True)  # sessizce
-
-        # ── 6. Firewall (sadece firewalld) ────────────────────────────────
-        r_fwcmd = subprocess.run(['which', 'firewall-cmd'], capture_output=True)
-        if r_fwcmd.returncode == 0:
-            r_active = subprocess.run(
-                ['firewall-cmd', '--state'], capture_output=True, text=True
-            )
-            if r_active.returncode == 0 and 'running' in r_active.stdout.lower():
-                subprocess.run(['firewall-cmd', '--permanent', '--add-service=nfs'],
-                               capture_output=True)
-                subprocess.run(['firewall-cmd', '--permanent', '--add-service=mountd'],
-                               capture_output=True)
-                subprocess.run(['firewall-cmd', '--permanent', '--add-service=rpc-bind'],
-                               capture_output=True)
-                subprocess.run(['firewall-cmd', '--reload'], capture_output=True)
-                msgs.append("✓ Firewall (firewalld): NFS kuralları eklendi")
-
-        # ── 7. Export doğrulama ───────────────────────────────────────────
-        r_show = subprocess.run(['showmount', '-e', 'localhost'],
-                                capture_output=True, text=True)
-        if r_show.returncode == 0 and export_path in r_show.stdout:
-            msgs.append(f"✓ Export doğrulandı: {r_show.stdout.strip()}")
-        else:
-            errors.append(
-                f"Export doğrulanamadı (showmount çıktısı: {r_show.stdout.strip() or r_show.stderr.strip()})\n"
-                f"Sunucuyu yeniden başlatarak tekrar deneyin: systemctl restart {nfs_service}"
-            )
-
-        result_msg = ' | '.join(msgs)
-        if errors:
-            result_msg += ' | ⚠ Uyarı: ' + ' | '.join(errors)
-        flash(result_msg, 'success' if not errors else 'warning')
-
-    except Exception as e:
-        flash(f'NFS Kurulum Hatası: {str(e)}', 'danger')
-
-    return redirect(url_for('settings_page'))
+    """Bu rota artık kullanılmıyor. NFS/SMB yapılandırması kullanıcı tarafından yönetilir."""
+    flash('NFS/SMB yapılandırması Linux sunucuda kendiniz tarafından yapılmalıdır. '
+          'Yedek Sunucu IP ve Yedek Dizini Ayarlar → Genel sekmesinde yapılandırın.', 'info')
+    return redirect(url_for('settings_page', tab='tools'))
 
 
 @app.route('/settings/generate-key', methods=['POST'])

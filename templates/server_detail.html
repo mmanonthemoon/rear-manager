@@ -92,12 +92,9 @@
       </div>
       {% endif %}
       <p class="text-muted" style="font-size:12px;margin-bottom:10px">
-        <strong>NFS:</strong>
-        {% if cfg.nfs_mode == 'separate' and cfg.nfs_server_ip %}
-          {{ cfg.nfs_server_ip }} <span class="badge badge-purple">Ayrı NFS</span>
-        {% else %}
-          {{ cfg.central_ip }} <span class="badge badge-secondary">Merkezi</span>
-        {% endif %}
+        <strong>Yedek Sunucu:</strong>
+        <code>{{ cfg.central_ip or '?' }}</code>
+        <span class="text-muted" style="font-size:11px">{{ cfg.nfs_export_path or '/srv/rear-backups' }}/{{ server.hostname }}</span>
       </p>
       <form action="{{ url_for('server_backup', sid=server.id) }}" method="post" style="margin-bottom:6px">
         <input type="hidden" name="backup_type" value="mkbackup">
