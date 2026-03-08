@@ -125,6 +125,7 @@ def _cron_describe(minute, hour, dom, month, dow):
 
 
 app.jinja_env.globals['_cron_describe'] = _cron_describe
+app.jinja_env.globals['_safe_dirname']  = _safe_dirname
 
 
 @app.template_filter('calc_duration')
@@ -607,15 +608,30 @@ def _get_local_ip():
     return '127.0.0.1'
 
 
+def _safe_dirname(hostname):
+    """
+    Hostname'i güvenli bir dizin adına dönüştürür.
+    Nokta ve özel karakterleri kaldırır/değiştirir.
+    Örnek: 'web01.example.com' → 'web01-example-com'
+    """
+    # Noktaları tire ile değiştir, harf/rakam/tire/alt çizgi dışını kaldır
+    safe = re.sub(r'[^a-zA-Z0-9_-]', lambda m: '-' if m.group() == '.' else '', hostname)
+    # Birden fazla tire yan yana gelirse tek tireye indir
+    safe = re.sub(r'-{2,}', '-', safe)
+    # Baş/son tireleri kaldır
+    safe = safe.strip('-')
+    return safe or hostname  # boş kalırsa orijinalini kullan
+
+
 def get_nfs_target(hostname):
     """
     Yapılandırmaya göre NFS backup URL'ini döner.
-    nfs://<central_ip><nfs_export_path>/<hostname>
+    nfs://<central_ip><nfs_export_path>/<safe_dirname>
     """
     cfg  = get_settings()
     ip   = cfg.get('central_ip', _get_local_ip()).strip() or _get_local_ip()
     path = cfg.get('nfs_export_path', BACKUP_ROOT).strip() or BACKUP_ROOT
-    return f"nfs://{ip}{path}/{hostname}"
+    return f"nfs://{ip}{path}/{_safe_dirname(hostname)}"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1618,11 +1634,11 @@ def _do_backup(job_id, server_dict, backup_cmd='mkbackup', triggered_by='manual'
     cfg = get_settings()
     nfs_ip = cfg.get('central_ip', _get_local_ip())
     log(f"► Yedek Sunucu: {nfs_ip}")
-    log(f"► Yedek Yolu  : {cfg.get('nfs_export_path', BACKUP_ROOT)}/{server_dict['hostname']}")
+    log(f"► Yedek Yolu  : {cfg.get('nfs_export_path', BACKUP_ROOT)}/{_safe_dirname(server_dict['hostname'])}")
     log("")
 
     hostname   = server_dict['hostname']
-    backup_dir = os.path.join(BACKUP_ROOT, hostname)
+    backup_dir = os.path.join(BACKUP_ROOT, _safe_dirname(hostname))
 
     # NFS hedef dizinini rear çalışmadan önce oluştur
     try:
@@ -1886,7 +1902,7 @@ def dashboard():
 
     backup_info = {}
     for s in servers:
-        d = os.path.join(BACKUP_ROOT, s['hostname'])
+        d = os.path.join(BACKUP_ROOT, _safe_dirname(s['hostname']))
         if os.path.isdir(d):
             try:
                 r = subprocess.run(['du', '-sh', d], capture_output=True, text=True)
@@ -2204,7 +2220,7 @@ def server_detail(sid):
 
     conn.close()
 
-    backup_dir = os.path.join(BACKUP_ROOT, server['hostname'])
+    backup_dir = os.path.join(BACKUP_ROOT, _safe_dirname(server['hostname']))
     backup_files = []
     if os.path.isdir(backup_dir):
         for fname in sorted(os.listdir(backup_dir), reverse=True):

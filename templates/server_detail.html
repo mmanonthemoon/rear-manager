@@ -94,7 +94,7 @@
       <p class="text-muted" style="font-size:12px;margin-bottom:10px">
         <strong>Yedek Sunucu:</strong>
         <code>{{ cfg.central_ip or '?' }}</code>
-        <span class="text-muted" style="font-size:11px">{{ cfg.nfs_export_path or '/srv/rear-backups' }}/{{ server.hostname }}</span>
+        <span class="text-muted" style="font-size:11px">{{ cfg.nfs_export_path or '/srv/rear-backups' }}/{{ _safe_dirname(server.hostname) }}</span>
       </p>
       <form action="{{ url_for('server_backup', sid=server.id) }}" method="post" style="margin-bottom:6px">
         <input type="hidden" name="backup_type" value="mkbackup">
@@ -283,7 +283,7 @@
 <!-- YEDEK DOSYALARI -->
 <div class="card">
   <div class="card-header">📁 Yedek Dosyaları
-    <span class="text-muted" style="font-size:11px">/srv/rear-backups/{{ server.hostname }}/</span>
+    <span class="text-muted" style="font-size:11px">/srv/rear-backups/{{ _safe_dirname(server.hostname) }}/</span>
   </div>
   <div class="table-wrap">
     {% if backup_files %}

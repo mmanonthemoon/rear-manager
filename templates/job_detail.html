@@ -71,7 +71,7 @@
     </ol>
     <hr class="divider">
     <strong style="color:#f0f6ff">ISO Konumu:</strong><br>
-    <code style="color:#79c0ff;font-size:11px">/srv/rear-backups/{{ job.hostname }}/</code>
+    <code style="color:#79c0ff;font-size:11px">/srv/rear-backups/{{ _safe_dirname(job.hostname) }}/</code>
     {% elif job.job_type == 'install' %}
     Kurulum sonrası: <strong style="color:#f0f6ff">Yapılandır → Yedekle</strong>
     {% elif job.job_type == 'configure' %}
