@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+rear_manager.db
+*.db
+venv/
+.env
