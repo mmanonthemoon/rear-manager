@@ -12,7 +12,7 @@ This milestone stabilizes and improves the existing ReaR Manager codebase. Four 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Bug Fixes** - Eliminate race conditions, SSH reliability gaps, and session instability
+- [x] **Phase 1: Bug Fixes** - Eliminate race conditions, SSH reliability gaps, and session instability (completed 2026-03-17)
 - [ ] **Phase 2: Refactoring** - Decompose `app.py` into routes/services/models with structured error handling
 - [ ] **Phase 3: Testing** - Add unit and integration test coverage for SSH, ReaR, and Ansible workflows
 - [ ] **Phase 4: Features** - Ship pagination, audit log, and output size limits
@@ -28,7 +28,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. SSH sudo prompts are detected and handled correctly on RHEL, Ubuntu, and Debian targets
   3. Scheduled jobs fire at the correct time after an application restart, with no drift accumulating over days
   4. A user's session remains active across application restarts (no forced re-login on redeploy)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 01-01-PLAN.md — Test infrastructure + BUG-01 race condition fix + BUG-04 persistent secret key
@@ -73,7 +73,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Bug Fixes | 1/2 | In Progress|  |
+| 1. Bug Fixes | 2/2 | Complete   | 2026-03-17 |
 | 2. Refactoring | 0/TBD | Not started | - |
 | 3. Testing | 0/TBD | Not started | - |
 | 4. Features | 0/TBD | Not started | - |

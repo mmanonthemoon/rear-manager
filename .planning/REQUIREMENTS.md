@@ -10,8 +10,8 @@
 ### Bug Fixes
 
 - [x] **BUG-01**: `_running_jobs` dict tüm erişim noktalarında `_job_lock` ile korunmalı (race condition)
-- [ ] **BUG-02**: SSH PTY / sudo prompt tespiti farklı OS varyantlarında (RHEL, Ubuntu, Debian) güvenilir çalışmalı
-- [ ] **BUG-03**: APScheduler başlatılırken açık timezone tanımlanmalı (timezone drift önlenmeli)
+- [x] **BUG-02**: SSH PTY / sudo prompt tespiti farklı OS varyantlarında (RHEL, Ubuntu, Debian) güvenilir çalışmalı
+- [x] **BUG-03**: APScheduler başlatılırken açık timezone tanımlanmalı (timezone drift önlenmeli)
 - [x] **BUG-04**: `app.secret_key` uygulama yeniden başlatılınca oturumların kapanmaması için kalıcı hale getirilmeli
 
 ### Refactoring
@@ -71,8 +71,8 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | BUG-01 | Phase 1 | Complete |
-| BUG-02 | Phase 1 | Pending |
-| BUG-03 | Phase 1 | Pending |
+| BUG-02 | Phase 1 | Complete |
+| BUG-03 | Phase 1 | Complete |
 | BUG-04 | Phase 1 | Complete |
 | REF-01 | Phase 2 | Pending |
 | REF-02 | Phase 2 | Pending |
