@@ -75,6 +75,19 @@ ANSIBLE_GVARS_DIR = os.path.join(ANSIBLE_DIR, 'group_vars')
 
 SECRET_KEY_FILE = os.path.join(BASE_DIR, 'secret.key')
 
+SCHEDULER_TIMEZONES = [
+    'UTC',
+    'Europe/London',
+    'Europe/Berlin',
+    'Europe/Istanbul',
+    'Europe/Moscow',
+    'Asia/Dubai',
+    'Asia/Tokyo',
+    'America/New_York',
+    'America/Chicago',
+    'America/Los_Angeles',
+]
+
 
 def _load_or_create_secret_key():
     if os.path.exists(SECRET_KEY_FILE):
@@ -1767,10 +1780,32 @@ def init_scheduler():
     if not HAS_SCHEDULER:
         return
 
-    _scheduler = BackgroundScheduler(timezone='Europe/Istanbul', daemon=True)
+    cfg = get_settings()
+    tz = cfg.get('scheduler_timezone', 'Europe/Istanbul')
+    _scheduler = BackgroundScheduler(timezone=tz, daemon=True)
     _scheduler.start()
 
     # Mevcut aktif zamanlamaları yükle
+    conn = get_db()
+    schedules = conn.execute('SELECT * FROM schedules WHERE enabled=1').fetchall()
+    conn.close()
+
+    for sched in schedules:
+        _add_scheduler_job(sched['id'],
+                           sched['cron_minute'], sched['cron_hour'],
+                           sched['cron_dom'],    sched['cron_month'],
+                           sched['cron_dow'])
+
+
+def _restart_scheduler_with_timezone(new_tz):
+    """Zamanlayıcıyı yeni timezone ile yeniden başlatır ve aktif zamanlamaları yeniden yükler."""
+    global _scheduler
+    if _scheduler and _scheduler.running:
+        _scheduler.shutdown(wait=False)
+
+    _scheduler = BackgroundScheduler(timezone=new_tz, daemon=True)
+    _scheduler.start()
+
     conn = get_db()
     schedules = conn.execute('SELECT * FROM schedules WHERE enabled=1').fetchall()
     conn.close()
@@ -2759,6 +2794,21 @@ def settings_page():
             keys = ['ad_enabled', 'ad_server', 'ad_port', 'ad_domain',
                     'ad_base_dn', 'ad_bind_user', 'ad_bind_password',
                     'ad_user_filter', 'ad_admin_group', 'ad_user_group']
+        elif tab == 'scheduler':
+            tz = request.form.get('scheduler_timezone', 'Europe/Istanbul')
+            try:
+                import pytz
+                pytz.timezone(tz)  # validate
+            except Exception:
+                conn.close()
+                flash('Geçersiz timezone seçimi.', 'danger')
+                return redirect(url_for('settings_page', tab='scheduler'))
+            save_setting('scheduler_timezone', tz)
+            conn.close()
+            if HAS_SCHEDULER:
+                _restart_scheduler_with_timezone(tz)
+            flash('Zamanlayıcı ayarları kaydedildi.', 'success')
+            return redirect(url_for('settings_page', tab='scheduler'))
         else:
             keys = []
 
@@ -2788,7 +2838,8 @@ def settings_page():
                            has_scheduler=HAS_SCHEDULER, has_ldap=HAS_LDAP,
                            offline_pkg_status=offline_pkg_status,
                            ubuntu_codenames=UBUNTU_CODENAMES,
-                           offline_pkg_dir=OFFLINE_PKG_DIR)
+                           offline_pkg_dir=OFFLINE_PKG_DIR,
+                           scheduler_timezones=SCHEDULER_TIMEZONES)
 
 
 @app.route('/settings/setup-nfs', methods=['POST'])

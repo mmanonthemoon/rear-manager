@@ -13,6 +13,10 @@
      class="tab-link {% if active_tab == 'offline' %}active{% endif %}">📦 Offline Paketler</a>
   <a href="{{ url_for('settings_page', tab='tools') }}"
      class="tab-link {% if active_tab == 'tools' %}active{% endif %}">🔧 Araçlar</a>
+  {% if has_scheduler %}
+  <a href="{{ url_for('settings_page', tab='scheduler') }}"
+     class="tab-link {% if active_tab == 'scheduler' %}active{% endif %}">⏰ Zamanlayıcı</a>
+  {% endif %}
 </div>
 
 <!-- ══════════════════════ GENEL ══════════════════════ -->
@@ -511,6 +515,28 @@
     </div>
   </div>
 </div>
+</div>
+{% elif active_tab == 'scheduler' %}
+<!-- ══════════════════════ ZAMANLAYICI ══════════════════════ -->
+<div class="card">
+  <div class="card-header">⏰ Zamanlayıcı Ayarları</div>
+  <div class="card-body">
+    <form method="POST">
+      <input type="hidden" name="tab" value="scheduler">
+      <div class="mb-3" style="max-width:400px">
+        <label class="form-label" style="font-weight:600">Timezone</label>
+        <select name="scheduler_timezone" class="form-select">
+          {% for tz in scheduler_timezones %}
+          <option value="{{ tz }}" {% if settings.get('scheduler_timezone', 'Europe/Istanbul') == tz %}selected{% endif %}>{{ tz }}</option>
+          {% endfor %}
+        </select>
+        <div class="text-muted" style="font-size:12px;margin-top:6px">
+          Zamanlanmış yedeklemelerin çalışacağı timezone. Değişiklik kaydedildiğinde zamanlayıcı yeniden başlatılır.
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Kaydet</button>
+    </form>
+  </div>
 </div>
 {% endif %}
 {% endblock %}
