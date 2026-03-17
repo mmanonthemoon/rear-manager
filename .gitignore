@@ -5,3 +5,4 @@ rear_manager.db
 *.db
 venv/
 .env
+secret.key

@@ -73,8 +73,24 @@ ANSIBLE_INV_DIR   = os.path.join(ANSIBLE_DIR, 'inventories')
 ANSIBLE_HVARS_DIR = os.path.join(ANSIBLE_DIR, 'host_vars')
 ANSIBLE_GVARS_DIR = os.path.join(ANSIBLE_DIR, 'group_vars')
 
+SECRET_KEY_FILE = os.path.join(BASE_DIR, 'secret.key')
+
+
+def _load_or_create_secret_key():
+    if os.path.exists(SECRET_KEY_FILE):
+        with open(SECRET_KEY_FILE, 'r') as f:
+            key = f.read().strip()
+        if key:
+            return key
+    key = secrets.token_hex(32)
+    with open(SECRET_KEY_FILE, 'w') as f:
+        f.write(key)
+    os.chmod(SECRET_KEY_FILE, 0o600)
+    return key
+
+
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)
+app.secret_key = _load_or_create_secret_key()
 
 _running_jobs = {}
 _job_lock     = threading.Lock()
