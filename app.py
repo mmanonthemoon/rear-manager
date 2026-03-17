@@ -1908,6 +1908,8 @@ def dashboard():
         FROM backup_jobs j JOIN servers s ON s.id=j.server_id
         ORDER BY j.id DESC LIMIT 12
     ''').fetchall()
+    with _job_lock:
+        _running_count = len(_running_jobs)
     stats = {
         'total_servers':      conn.execute('SELECT COUNT(*) FROM servers').fetchone()[0],
         'installed_servers':  conn.execute('SELECT COUNT(*) FROM servers WHERE rear_installed=1').fetchone()[0],
@@ -1915,7 +1917,7 @@ def dashboard():
         'total_backups':      conn.execute("SELECT COUNT(*) FROM backup_jobs WHERE job_type='backup'").fetchone()[0],
         'success_backups':    conn.execute("SELECT COUNT(*) FROM backup_jobs WHERE job_type='backup' AND status='success'").fetchone()[0],
         'failed_backups':     conn.execute("SELECT COUNT(*) FROM backup_jobs WHERE job_type='backup' AND status='failed'").fetchone()[0],
-        'running_jobs':       len(_running_jobs),
+        'running_jobs':       _running_count,
         'active_schedules':   conn.execute("SELECT COUNT(*) FROM schedules WHERE enabled=1").fetchone()[0],
     }
     conn.close()
@@ -2266,7 +2268,8 @@ def server_detail(sid):
         sched_next[s['id']] = get_next_run(s['id'])
 
     cfg = get_settings()
-    running_job_ids = set(_running_jobs.keys())
+    with _job_lock:
+        running_job_ids = set(_running_jobs.keys())
 
     return render_template('server_detail.html',
                            server=dict(server), jobs=jobs,
@@ -2664,10 +2667,12 @@ def jobs_list():
     jobs    = conn.execute(query, params).fetchall()
     servers = conn.execute('SELECT id, label FROM servers ORDER BY label').fetchall()
     conn.close()
+    with _job_lock:
+        running_job_ids = set(_running_jobs.keys())
     return render_template('jobs.html', jobs=jobs, servers=servers,
                            status_filter=status_filter, type_filter=type_filter,
                            server_filter=server_filter,
-                           running_job_ids=set(_running_jobs.keys()))
+                           running_job_ids=running_job_ids)
 
 
 @app.route('/jobs/<int:jid>')
@@ -2682,9 +2687,11 @@ def job_detail(jid):
     if not job:
         flash('İş bulunamadı.', 'danger')
         return redirect(url_for('jobs_list'))
+    with _job_lock:
+        _is_running = jid in _running_jobs
     return render_template('job_detail.html',
                            job=dict(job),
-                           is_running=jid in _running_jobs)
+                           is_running=_is_running)
 
 
 @app.route('/jobs/<int:jid>/log')
@@ -2695,9 +2702,11 @@ def job_log_api(jid):
     conn.close()
     if not row:
         return jsonify({'log': '', 'status': 'notfound'})
+    with _job_lock:
+        _is_running = jid in _running_jobs
     return jsonify({'log': row['log_output'] or '', 'status': row['status'],
                     'finished_at': row['finished_at'] or '',
-                    'running': jid in _running_jobs})
+                    'running': _is_running})
 
 
 @app.route('/jobs/<int:jid>/cancel', methods=['POST'])
@@ -2990,7 +2999,9 @@ def change_password():
 def api_status():
     conn = get_db()
     running = []
-    for jid in list(_running_jobs.keys()):
+    with _job_lock:
+        _job_ids = list(_running_jobs.keys())
+    for jid in _job_ids:
         row = conn.execute(
             'SELECT j.id, j.job_type, j.started_at, s.label FROM backup_jobs j '
             'JOIN servers s ON s.id=j.server_id WHERE j.id=?', (jid,)
