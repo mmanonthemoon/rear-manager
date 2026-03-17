@@ -28,7 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. SSH sudo prompts are detected and handled correctly on RHEL, Ubuntu, and Debian targets
   3. Scheduled jobs fire at the correct time after an application restart, with no drift accumulating over days
   4. A user's session remains active across application restarts (no forced re-login on redeploy)
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Test infrastructure + BUG-01 race condition fix + BUG-04 persistent secret key
+- [ ] 01-02-PLAN.md — BUG-02 SSH sudo prompt timeout + BUG-03 configurable scheduler timezone
 
 ### Phase 2: Refactoring
 **Goal**: The codebase is split into isolated layers (routes / services / models) with structured error handling, while all existing behavior is preserved
@@ -65,11 +69,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Bug Fixes | 0/TBD | Not started | - |
+| 1. Bug Fixes | 0/2 | Planning complete | - |
 | 2. Refactoring | 0/TBD | Not started | - |
 | 3. Testing | 0/TBD | Not started | - |
 | 4. Features | 0/TBD | Not started | - |
