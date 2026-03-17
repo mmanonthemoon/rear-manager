@@ -1082,6 +1082,8 @@ def ssh_exec_stream(server, command, log_cb):
         chan.get_pty(term='vt100', width=220, height=50)
         chan.exec_command(wrapped_cmd)
 
+        prompt_deadline = time.monotonic() + 30  # 30s timeout for sudo/su prompt
+
         buf           = b''
         pass_sent     = False
         pass_attempts = 0
@@ -1114,7 +1116,6 @@ def ssh_exec_stream(server, command, log_cb):
                             chan.sendall(b'\n')
                         pass_sent     = True
                         pass_attempts += 1
-                        buf = b''
                         continue
 
                 # ── Su şifre promptu ────────────────────────────────
@@ -1123,7 +1124,6 @@ def ssh_exec_stream(server, command, log_cb):
                         chan.sendall((bpass + '\n').encode('utf-8'))
                         pass_sent     = True
                         pass_attempts += 1
-                        buf = b''
                         continue
 
                 # ── Yanlış şifre: tekrar prompt geldi ──────────────
@@ -1175,6 +1175,15 @@ def ssh_exec_stream(server, command, log_cb):
                 exit_code = chan.recv_exit_status()
                 break
             else:
+                # Timeout check — only for sudo/su when password not yet sent
+                if actual_method in ('sudo', 'su') and not pass_sent:
+                    if time.monotonic() > prompt_deadline:
+                        error_msg = "Sudo prompt not received — check become password or sudoers config"
+                        output_lines.append(f"[HATA] {error_msg}")
+                        log_cb(f"[HATA] {error_msg}")
+                        chan.close()
+                        client.close()
+                        return 1, '\n'.join(output_lines)
                 time.sleep(0.05)
 
         client.close()
