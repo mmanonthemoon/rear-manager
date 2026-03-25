@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-refactoring 02-02-PLAN.md
-last_updated: "2026-03-25T20:54:32.606Z"
+stopped_at: Completed 02-refactoring 02-03-PLAN.md
+last_updated: "2026-03-25T21:07:05.790Z"
 last_activity: 2026-03-17 — Roadmap created
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -54,6 +54,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01-bug-fixes P02 | 8 minutes | 2 tasks | 4 files |
 | Phase 02-refactoring P01 | 18 | 2 tasks | 9 files |
 | Phase 02-refactoring P02 | multi-session | 2 tasks | 8 files |
+| Phase 02-refactoring P03 | 9 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Recent decisions affecting current work:
 - [Phase 02-refactoring]: Smoke test fixture patches db.DB_PATH (module-level var) since get_db() reads it at call time from db module globals
 - [Phase 02-refactoring]: Repository functions are plain functions (not classes) — consistent with existing patterns
 - [Phase 02-refactoring]: models/ansible.py covers all 6 ansible tables in one module — co-located as they were in app.py
+- [Phase 02-refactoring]: services/jobs.py owns _running_jobs/_job_lock globals; route handlers use accessor functions (get_running_job_ids, is_job_running, get_running_count)
+- [Phase 02-refactoring]: start_job_thread pushes Flask app context via app.app_context() wrapper so background threads can use current_app.logger
 
 ### Pending Todos
 
@@ -82,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T20:54:32.600Z
-Stopped at: Completed 02-refactoring 02-02-PLAN.md
+Last session: 2026-03-25T21:07:05.784Z
+Stopped at: Completed 02-refactoring 02-03-PLAN.md
 Resume file: None
