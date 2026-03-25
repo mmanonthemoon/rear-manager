@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-bug-fixes-01-02-PLAN.md
-last_updated: "2026-03-17T22:48:30.458Z"
+stopped_at: Completed 02-refactoring-02-01-PLAN.md
+last_updated: "2026-03-25T20:25:50.816Z"
 last_activity: 2026-03-17 — Roadmap created
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 8
+  completed_plans: 3
   percent: 0
 ---
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 *Updated after each plan completion*
 | Phase 01-bug-fixes P01 | 7 | 3 tasks | 7 files |
 | Phase 01-bug-fixes P02 | 8 minutes | 2 tasks | 4 files |
+| Phase 02-refactoring P01 | 18 | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,8 @@ Recent decisions affecting current work:
 - [Phase 01-bug-fixes]: secret.key stored in BASE_DIR with 0o600 permissions; empty file triggers regeneration
 - [Phase 01-bug-fixes]: Remove buf reset after password send to fix split-prompt detection (BUG-02)
 - [Phase 01-bug-fixes]: SCHEDULER_TIMEZONES constant defined at module level with pytz validation in settings POST handler (BUG-03)
+- [Phase 02-refactoring]: app.py retains _get_local_ip() for get_nfs_target(); db.py has own private copy for init_db()
+- [Phase 02-refactoring]: Smoke test fixture patches db.DB_PATH (module-level var) since get_db() reads it at call time from db module globals
 
 ### Pending Todos
 
@@ -76,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T22:42:52.236Z
-Stopped at: Completed 01-bug-fixes-01-02-PLAN.md
+Last session: 2026-03-25T20:25:50.812Z
+Stopped at: Completed 02-refactoring-02-01-PLAN.md
 Resume file: None
