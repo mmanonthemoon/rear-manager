@@ -17,7 +17,7 @@
 ### Refactoring
 
 - [x] **REF-01**: `app.py` routes / services / models katmanlarına ayrılmalı (mevcut davranış değişmeden)
-- [ ] **REF-02**: Tüm DB sorguları inline string yerine model/repository katmanına taşınmalı
+- [x] **REF-02**: Tüm DB sorguları inline string yerine model/repository katmanına taşınmalı
 - [ ] **REF-03**: `~48` adet bare `except Exception` bloğu yapılandırılmış hata işlemeyle değiştirilmeli
 
 ### Testing
@@ -75,7 +75,7 @@
 | BUG-03 | Phase 1 | Complete |
 | BUG-04 | Phase 1 | Complete |
 | REF-01 | Phase 2 | Complete |
-| REF-02 | Phase 2 | Pending |
+| REF-02 | Phase 2 | Complete |
 | REF-03 | Phase 2 | Pending |
 | TEST-01 | Phase 3 | Pending |
 | TEST-02 | Phase 3 | Pending |
