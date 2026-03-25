@@ -88,10 +88,10 @@ def _make_server(become_method='sudo', become_pass='secret'):
 
 def _call_ssh_exec(mock_channel, server, command='echo hi'):
     """Patch build_ssh_client and call ssh_exec_stream; return (exit_code, output)."""
-    import app as app_module
+    import services.ssh as ssh_module
     mock_client = _build_mock_client(mock_channel)
-    with patch.object(app_module, 'build_ssh_client', return_value=mock_client):
-        return app_module.ssh_exec_stream(server, command, log_cb=lambda x: None)
+    with patch.object(ssh_module, 'build_ssh_client', return_value=mock_client):
+        return ssh_module.ssh_exec_stream(server, command, log_cb=lambda x: None)
 
 
 # ── Tests ────────────────────────────────────────────────────────────────────
@@ -165,12 +165,12 @@ def test_prompt_timeout():
             return _base_time[0]
         return _base_time[0] + 31
 
-    import app as app_module
+    import services.ssh as ssh_module
     mock_client = _build_mock_client(chan)
-    with patch.object(app_module, 'build_ssh_client', return_value=mock_client):
-        with patch('app.time.monotonic', side_effect=fake_monotonic):
-            with patch('app.time.sleep', return_value=None):
-                exit_code, output = app_module.ssh_exec_stream(
+    with patch.object(ssh_module, 'build_ssh_client', return_value=mock_client):
+        with patch('services.ssh.time.monotonic', side_effect=fake_monotonic):
+            with patch('services.ssh.time.sleep', return_value=None):
+                exit_code, output = ssh_module.ssh_exec_stream(
                     server, 'echo hi', log_cb=lambda x: None
                 )
 

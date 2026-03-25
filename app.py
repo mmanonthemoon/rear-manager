@@ -26,6 +26,7 @@ from db import init_db
 from models import users as user_repo, servers as server_repo, schedules as schedule_repo, \
     jobs as job_repo, settings as settings_repo
 from models import ansible as ansible_repo
+from services import ssh as ssh_service
 
 try:
     import paramiko
@@ -428,7 +429,7 @@ def get_ubuntu_codename_via_ssh(server):
     Döner: (codename_str | None, version_str | None)
     """
     try:
-        client = build_ssh_client(server)
+        client = ssh_service.build_ssh_client(server)
         _, stdout, _ = client.exec_command(
             'lsb_release -cs 2>/dev/null; lsb_release -rs 2>/dev/null',
             timeout=10
@@ -502,7 +503,7 @@ def ssh_install_offline_ubuntu(server_dict, job_id):
     log(f"  Hedef: {server_dict['ip_address']}:{remote_tar}")
 
     try:
-        client = build_ssh_client(server_dict)
+        client = ssh_service.build_ssh_client(server_dict)
         sftp   = client.open_sftp()
 
         # İlerleme callback
@@ -550,7 +551,7 @@ rm -rf {remote_tmp_dir} {remote_tar}
 echo "KURULUM_TAMAM"
 """
 
-    ec, out = ssh_exec_stream(server_dict, install_script.strip(), log)
+    ec, out = ssh_service.ssh_exec_stream(server_dict, install_script.strip(), log)
 
     # KURULUM_TAMAM kontrolü (dpkg exit code'u güvenilmez olabilir)
     if 'KURULUM_TAMAM' in out:
@@ -559,339 +560,11 @@ echo "KURULUM_TAMAM"
         return True, "Offline kurulum tamamlandı."
     else:
         # dpkg -i bazı hatalara rağmen 0 dışı dönebilir; rear kuruldu mu kontrol et
-        ec2, ver = ssh_exec_stream(server_dict, 'rear --version 2>/dev/null', lambda x: None)
+        ec2, ver = ssh_service.ssh_exec_stream(server_dict, 'rear --version 2>/dev/null', lambda x: None)
         if ec2 == 0 and 'Relax-and-Recover' in ver:
             log(f"► ReaR kurulmuş: {ver.strip()}")
             return True, f"ReaR kuruldu (uyarılarla): {ver.strip()}"
         return False, f"Kurulum başarısız (kod: {ec})."
-
-
-# ─────────────────────────────────────────────────────────────
-def _get_become_password(server):
-    """
-    Become şifresini döner.
-    become_same_pass=1 → SSH şifresi kullanılır
-    become_same_pass=0 → become_password alanı kullanılır
-    """
-    same = server.get('become_same_pass', 1)
-    if str(same) == '1':
-        return server.get('ssh_password', '') or ''
-    return server.get('become_password', '') or ''
-
-
-def _wrap_become_cmd(server, command):
-    """
-    Komutu become yöntemine göre sarar.
-    - none  : komut olduğu gibi çalışır
-    - sudo  : sudo -H -u <user> bash -c '...'  (şifre PTY prompt ile gönderilir)
-    - su    : su - <user> -c '...'             (şifre PTY prompt ile gönderilir)
-    Döner: (wrapped_command, method, become_pass)
-    """
-    method = server.get('become_method', 'none')
-    if method == 'none':
-        return command, 'none', ''
-
-    buser = (server.get('become_user', 'root') or 'root').strip()
-    bpass = _get_become_password(server)
-
-    if method == 'sudo':
-        # PTY prompt yöntemi: sudo şifre isteyince prompt yakala, şifre gönder
-        # -p 'SUDO_PASS_PROMPT: ' → sabit prompt metni ile yakalaması kolay
-        # -H : HOME=/root,  -u : hedef kullanıcı
-        if bpass:
-            wrapped = (
-                f"sudo -p 'SUDO_PASS_PROMPT: ' -H -u {buser} "
-                f"bash -c {shlex.quote(command)}"
-            )
-        else:
-            # NOPASSWD sudoers — şifre gönderme
-            wrapped = f"sudo -H -u {buser} bash -c {shlex.quote(command)}"
-        return wrapped, 'sudo', bpass
-
-    elif method == 'su':
-        wrapped = f"su - {buser} -c {shlex.quote(command)}"
-        return wrapped, 'su', bpass
-
-    return command, 'none', ''
-
-
-def build_ssh_client(server):
-    if not HAS_PARAMIKO:
-        raise RuntimeError(
-            "paramiko modülü kurulu değil. 'pip install paramiko' komutunu çalıştırın."
-        )
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    kwargs = dict(
-        hostname=server['ip_address'],
-        port=int(server['ssh_port']),
-        username=server['ssh_user'],
-        timeout=30,
-    )
-    if server['ssh_auth'] == 'key':
-        kp = get_settings().get('ssh_key_path', KEY_PATH)
-        kwargs['key_filename'] = kp
-    else:
-        kwargs['password'] = server['ssh_password']
-    client.connect(**kwargs)
-    return client
-
-
-
-def ssh_exec_stream(server, command, log_cb):
-    """
-    SSH ile komut çalıştırır, PTY üzerinden çıktıyı satır satır log_cb'ye yollar.
-    become (sudo/su) için PTY prompt beklenir ve şifre gönderilir.
-
-    sudo: 'SUDO_PASS_PROMPT: ' sabit prompt metni ile şifre yakalaması güvenilir.
-    su  : 'password:', 'parola:' vb. prompt ile şifre gönderilir.
-    """
-    wrapped_cmd, actual_method, bpass = _wrap_become_cmd(server, command)
-
-    output_lines = []
-    exit_code    = -1
-
-    try:
-        client    = build_ssh_client(server)
-        transport = client.get_transport()
-        chan      = transport.open_session()
-        chan.get_pty(term='vt100', width=220, height=50)
-        chan.exec_command(wrapped_cmd)
-
-        prompt_deadline = time.monotonic() + 30  # 30s timeout for sudo/su prompt
-
-        buf           = b''
-        pass_sent     = False
-        pass_attempts = 0
-        MAX_ATTEMPTS  = 3
-
-        # Prompt desenleri (küçük harf karşılaştırması için)
-        SUDO_PROMPT = b'sudo_pass_prompt: '
-        SU_PROMPTS  = (
-            b'password:', b'parola:',
-            'şifre:'.encode('utf-8'),
-            b'mot de passe:', b'passwort:',
-            b'password for',
-        )
-
-        while True:
-            if chan.recv_ready():
-                data = chan.recv(8192)
-                if not data:
-                    break
-                buf += data
-
-                buf_lower = buf.lower()
-
-                # ── Sudo şifre promptu ──────────────────────────────
-                if actual_method == 'sudo' and not pass_sent and pass_attempts < MAX_ATTEMPTS:
-                    if SUDO_PROMPT in buf_lower:
-                        if bpass:
-                            chan.sendall((bpass + '\n').encode('utf-8'))
-                        else:
-                            chan.sendall(b'\n')
-                        pass_sent     = True
-                        pass_attempts += 1
-                        continue
-
-                # ── Su şifre promptu ────────────────────────────────
-                if actual_method == 'su' and not pass_sent and pass_attempts < MAX_ATTEMPTS:
-                    if any(p in buf_lower for p in SU_PROMPTS):
-                        chan.sendall((bpass + '\n').encode('utf-8'))
-                        pass_sent     = True
-                        pass_attempts += 1
-                        continue
-
-                # ── Yanlış şifre: tekrar prompt geldi ──────────────
-                if actual_method in ('sudo','su') and pass_sent and pass_attempts < MAX_ATTEMPTS:
-                    check = buf_lower
-                    wrong = (b'sorry' in check or b'incorrect' in check or
-                             b'authentication failure' in check or
-                             b'3 incorrect' in check)
-                    if wrong:
-                        output_lines.append('[HATA] Become şifresi yanlış!')
-                        log_cb('[HATA] Become şifresi yanlış! Lütfen sunucu ayarlarını kontrol edin.')
-                        chan.close(); client.close()
-                        return 1, '\n'.join(output_lines)
-
-                # ── Satır satır çıktıyı işle ────────────────────────
-                while b'\n' in buf:
-                    line, buf = buf.split(b'\n', 1)
-                    decoded = line.decode('utf-8', errors='replace').rstrip('\r')
-
-                    # sudo/su gürültüsünü filtrele
-                    if actual_method in ('sudo','su'):
-                        dl = decoded.lower()
-                        if (decoded.strip() == '' or
-                            'sudo_pass_prompt' in dl or
-                            'sudo:' in dl and 'password' in dl or
-                            any(p.decode('utf-8','replace') in dl for p in SU_PROMPTS)):
-                            continue
-
-                    output_lines.append(decoded)
-                    log_cb(decoded)
-
-            elif chan.exit_status_ready():
-                # Kanaldaki kalan veriyi boşalt
-                while chan.recv_ready():
-                    buf += chan.recv(8192)
-                if buf:
-                    for ln in buf.decode('utf-8', errors='replace').split('\n'):
-                        ln = ln.rstrip('\r')
-                        if not ln.strip():
-                            continue
-                        dl = ln.lower()
-                        if actual_method in ('sudo','su') and (
-                            'sudo_pass_prompt' in dl or
-                            any(p.decode('utf-8','replace') in dl for p in SU_PROMPTS)
-                        ):
-                            continue
-                        output_lines.append(ln)
-                        log_cb(ln)
-                exit_code = chan.recv_exit_status()
-                break
-            else:
-                # Timeout check — only for sudo/su when password not yet sent
-                if actual_method in ('sudo', 'su') and not pass_sent:
-                    if time.monotonic() > prompt_deadline:
-                        error_msg = "Sudo prompt not received — check become password or sudoers config"
-                        output_lines.append(f"[HATA] {error_msg}")
-                        log_cb(f"[HATA] {error_msg}")
-                        chan.close()
-                        client.close()
-                        return 1, '\n'.join(output_lines)
-                time.sleep(0.05)
-
-        client.close()
-
-    except Exception as e:
-        msg = f"[SSH HATA] {str(e)}"
-        output_lines.append(msg)
-        log_cb(msg)
-        exit_code = -1
-
-    return exit_code, '\n'.join(output_lines)
-
-
-def ssh_test_connection(server):
-    """
-    Bağlantı testi: SSH bağlantısı + become testi.
-    Döner: (ok: bool, mesaj: str)
-    """
-    try:
-        # 1. Temel SSH bağlantısı
-        client = build_ssh_client(server)
-        _, stdout, stderr = client.exec_command('id && uname -r', timeout=10)
-        id_out   = stdout.read().decode().strip()
-        err_out  = stderr.read().decode().strip()
-        client.close()
-
-        if not id_out:
-            return False, f"SSH bağlandı ancak komut çalışmadı.\nHata: {err_out}"
-
-        method = server.get('become_method', 'none')
-        if method == 'none':
-            return True, f"SSH OK\n{id_out}"
-
-        # 2. Become testi
-        buser = (server.get('become_user', 'root') or 'root').strip()
-        bpass = _get_become_password(server)
-
-        # Become öncesi hangi kullanıcı olduğunu göster
-        ssh_user = server.get('ssh_user', '?')
-
-        ec, out = ssh_exec_stream(server, 'id && whoami', lambda x: None)
-        actual_lines = [ln.strip() for ln in out.strip().split('\n') if ln.strip()]
-        actual_user  = actual_lines[-1] if actual_lines else ''
-
-        if ec == 0 and (actual_user == buser or f'uid=0({buser})' in out or f'({buser})' in out):
-            return True, (
-                f"SSH OK — {ssh_user} → become({method}) → {buser} ✓\n"
-                f"SSH kullanıcı: {id_out.split(chr(10))[0]}\n"
-                f"Become sonrası: {actual_lines[0] if actual_lines else '?'}"
-            )
-        else:
-            # Hata nedenini tespit et
-            hint = ""
-            if 'yanlış' in out.lower() or 'incorrect' in out.lower() or 'sorry' in out.lower():
-                hint = f"\nNeden: Şifre yanlış. 'Become şifresi' alanını kontrol edin."
-                if server.get('become_same_pass', 1) == 1:
-                    hint += f"\n(Şu an SSH şifresi kullanılıyor: become_same_pass=1)"
-            elif 'not in the sudoers' in out.lower() or 'is not allowed' in out.lower():
-                hint = f"\nNeden: {ssh_user} sudoers'da yok.\nÇözüm: Hedef sunucuda → sudo visudo → '{ssh_user} ALL=(ALL) NOPASSWD: ALL'"
-            elif 'command not found' in out.lower():
-                hint = f"\nNeden: sudo/su bulunamadı."
-            elif not bpass:
-                hint = f"\nNeden: Şifre boş. Sunucu ayarlarında şifre girin."
-
-            return False, (
-                f"SSH OK ancak become başarısız!\n"
-                f"SSH kullanıcı: {ssh_user}, Become: {method} → {buser}\n"
-                f"Beklenen: {buser} | Dönen: {actual_user!r}\n"
-                f"Çıkış kodu: {ec}{hint}"
-            )
-
-    except Exception as e:
-        return False, str(e)
-
-
-def ssh_get_os_info(server):
-    """OS bilgisini alır. Become gerekebilir (genellikle gerekmez ama tutarlılık için)."""
-    try:
-        client = build_ssh_client(server)
-        _, stdout, _ = client.exec_command(
-            'cat /etc/os-release 2>/dev/null | head -5', timeout=10
-        )
-        out = stdout.read().decode().strip()
-        client.close()
-        return out
-    except Exception:
-        return ''
-
-
-def ssh_upload_file(server, content, remote_path):
-    """
-    Dosyayı uzak sunucuya yazar.
-    Become gerekiyorsa:
-      1) /tmp'ye normal kullanıcı ile yaz (SFTP)
-      2) become ile mv + chmod
-    """
-    import io, tempfile, posixpath
-
-    method = server.get('become_method', 'none')
-
-    try:
-        client = build_ssh_client(server)
-        sftp   = client.open_sftp()
-
-        if method == 'none':
-            # Doğrudan yaz
-            with sftp.open(remote_path, 'w') as f:
-                f.write(content)
-            sftp.close()
-            client.close()
-            return True, 'OK'
-        else:
-            # Önce /tmp'ye yaz
-            tmp_path = f"/tmp/.rear_upload_{secrets.token_hex(6)}"
-            with sftp.open(tmp_path, 'w') as f:
-                f.write(content)
-            sftp.close()
-            client.close()
-
-            # Sonra become ile taşı
-            mv_cmd = (
-                f"mv -f {shlex.quote(tmp_path)} {shlex.quote(remote_path)} && "
-                f"chmod 600 {shlex.quote(remote_path)}"
-            )
-            ec, out = ssh_exec_stream(server, mv_cmd, lambda x: None)
-            if ec == 0:
-                return True, 'OK'
-            else:
-                return False, f"mv başarısız (kod {ec}): {out}"
-
-    except Exception as e:
-        return False, str(e)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1002,7 +675,7 @@ def _run_install_rear(job_id, server_dict):
 
     log("=== ReaR Kurulumu Başlıyor ===")
     log("► OS bilgisi alınıyor...")
-    os_info = ssh_get_os_info(server_dict)
+    os_info = ssh_service.ssh_get_os_info(server_dict)
     log(os_info)
 
     os_lower  = os_info.lower()
@@ -1031,7 +704,7 @@ def _run_install_rear(job_id, server_dict):
             'rear nfs-common genisoimage xorriso '
             'syslinux syslinux-common isolinux 2>&1'
         )
-        ec_apt, _ = ssh_exec_stream(server_dict, apt_cmd, log)
+        ec_apt, _ = ssh_service.ssh_exec_stream(server_dict, apt_cmd, log)
 
         if ec_apt == 0:
             log("► apt-get kurulum başarılı ✓")
@@ -1078,7 +751,7 @@ def _run_install_rear(job_id, server_dict):
     # ── DİĞER DAĞITIMLAR ──────────────────────────────────────────────────────
     elif is_debian:
         log("► Debian tespit edildi — apt-get ile kurulum...")
-        ec, _ = ssh_exec_stream(server_dict, (
+        ec, _ = ssh_service.ssh_exec_stream(server_dict, (
             'export DEBIAN_FRONTEND=noninteractive && '
             'export DEBCONF_NONINTERACTIVE_SEEN=true && '
             'apt-get update -q && '
@@ -1093,7 +766,7 @@ def _run_install_rear(job_id, server_dict):
 
     elif is_redhat:
         log("► RHEL/CentOS/Alma/Rocky tespit edildi — dnf ile kurulum...")
-        ec, _ = ssh_exec_stream(server_dict, (
+        ec, _ = ssh_service.ssh_exec_stream(server_dict, (
             'dnf install -y epel-release 2>/dev/null || true; '
             'dnf install -y rear nfs-utils genisoimage syslinux'
         ), log)
@@ -1103,14 +776,14 @@ def _run_install_rear(job_id, server_dict):
 
     elif is_suse:
         log("► SUSE tespit edildi — zypper ile kurulum...")
-        ec, _ = ssh_exec_stream(server_dict, 'zypper install -y rear nfs-client genisoimage syslinux', log)
+        ec, _ = ssh_service.ssh_exec_stream(server_dict, 'zypper install -y rear nfs-client genisoimage syslinux', log)
         if ec != 0:
             log(f"[HATA] Kurulum başarısız (kod: {ec})")
             _set_job_status(job_id, 'failed'); return
 
     else:
         log("[UYARI] Bilinmeyen OS — apt-get ile deneniyor...")
-        ec, _ = ssh_exec_stream(server_dict, (
+        ec, _ = ssh_service.ssh_exec_stream(server_dict, (
             'export DEBIAN_FRONTEND=noninteractive && '
             'export DEBCONF_NONINTERACTIVE_SEEN=true && '
             'apt-get update -q && '
@@ -1127,7 +800,7 @@ def _run_install_rear(job_id, server_dict):
     # ── Sürüm doğrulama ───────────────────────────────────────────────────────
     log("")
     log("► ReaR sürümü doğrulanıyor...")
-    _, ver = ssh_exec_stream(server_dict, 'rear --version 2>/dev/null', log)
+    _, ver = ssh_service.ssh_exec_stream(server_dict, 'rear --version 2>/dev/null', log)
     ver_str = ver.strip()
     if 'Relax-and-Recover' not in ver_str:
         log("[HATA] ReaR kurulu görünmüyor — 'rear --version' çalışmadı.")
@@ -1148,20 +821,20 @@ def _run_configure_rear(job_id, server_dict, rear_config_content):
     job_repo.set_started(job_id)
 
     log("=== ReaR Yapılandırması Başlıyor ===")
-    ssh_exec_stream(server_dict, 'mkdir -p /etc/rear', log)
-    ssh_exec_stream(server_dict,
+    ssh_service.ssh_exec_stream(server_dict, 'mkdir -p /etc/rear', log)
+    ssh_service.ssh_exec_stream(server_dict,
         'test -f /etc/rear/local.conf && '
         'cp /etc/rear/local.conf /etc/rear/local.conf.bak && '
         'echo "Eski config yedeklendi" || true', log)
 
     log("► Yapılandırma dosyası yazılıyor...")
-    ok, msg = ssh_upload_file(server_dict, rear_config_content, '/etc/rear/local.conf')
+    ok, msg = ssh_service.ssh_upload_file(server_dict, rear_config_content, '/etc/rear/local.conf')
     if not ok:
         log(f"[HATA] {msg}")
         _set_job_status(job_id, 'failed'); return
 
     log("► Doğrulanıyor...")
-    ssh_exec_stream(server_dict, 'rear dump 2>&1 | head -20', log)
+    ssh_service.ssh_exec_stream(server_dict, 'rear dump 2>&1 | head -20', log)
 
     server_repo.update_rear_configured(server_dict['id'])
 
@@ -1199,7 +872,7 @@ def _do_backup(job_id, server_dict, backup_cmd='mkbackup', triggered_by='manual'
 
     log(f"► rear -v {backup_cmd} çalıştırılıyor (bu uzun sürebilir)...")
     log("─" * 60)
-    ec, _ = ssh_exec_stream(server_dict, f'rear -v {backup_cmd} 2>&1', log)
+    ec, _ = ssh_service.ssh_exec_stream(server_dict, f'rear -v {backup_cmd} 2>&1', log)
     log("─" * 60)
     status     = 'success' if ec == 0 else 'failed'
 
@@ -1825,7 +1498,7 @@ def server_test(sid):
     server = server_repo.get_by_id(sid)
     if not server:
         return jsonify({'ok': False, 'msg': 'Sunucu bulunamadı'})
-    ok, msg = ssh_test_connection(dict(server))
+    ok, msg = ssh_service.ssh_test_connection(dict(server))
     return jsonify({'ok': ok, 'msg': msg})
 
 
@@ -2161,7 +1834,7 @@ def copy_ssh_key(sid):
         cmd = (f"mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
                f"echo '{pub_key}' >> ~/.ssh/authorized_keys && "
                f"chmod 600 ~/.ssh/authorized_keys && echo OK")
-        ec, out = ssh_exec_stream(dict(server), cmd, lambda x: None)
+        ec, out = ssh_service.ssh_exec_stream(dict(server), cmd, lambda x: None)
         if ec == 0:
             return jsonify({'ok': True, 'msg': 'Public key kopyalandı.'})
         return jsonify({'ok': False, 'msg': out})
