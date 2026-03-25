@@ -29,6 +29,10 @@ from models import ansible as ansible_repo
 from services import ssh as ssh_service
 from services import rear as rear_service
 from services import jobs as job_service
+from services import auth as auth_service
+from services import scheduler as scheduler_service
+from services.auth import login_required, admin_required, authenticate_local, authenticate_ad
+from services.scheduler import init_scheduler, get_next_run, get_all_jobs as get_scheduler_jobs, _add_scheduler_job, _remove_scheduler_job, _restart_scheduler_with_timezone
 
 try:
     import paramiko
@@ -76,8 +80,6 @@ def _load_or_create_secret_key():
 
 app = Flask(__name__)
 app.secret_key = _load_or_create_secret_key()
-
-_scheduler    = None
 
 
 def _cron_describe(minute, hour, dom, month, dow):
@@ -238,242 +240,20 @@ def get_nfs_target(hostname):
 
 
 # ─────────────────────────────────────────────────────────────
-# KİMLİK DOĞRULAMA
+# KİMLİK DOĞRULAMA — moved to services/auth.py
+# login_required, admin_required, authenticate_local, authenticate_ad
+# imported at top of file via: from services.auth import login_required, ...
 # ─────────────────────────────────────────────────────────────
-def authenticate_local(username, password):
-    """Yerel kullanıcı doğrulama. (ok, user_dict, msg)"""
-    user = user_repo.get_by_username(username)
-    if not user:
-        return False, None, 'Kullanıcı bulunamadı'
-    if user['auth_type'] != 'local':
-        return False, None, 'Bu kullanıcı için yerel giriş desteklenmiyor'
-    if not user['active']:
-        return False, None, 'Hesap pasif'
-    if not check_password_hash(user['password_hash'] or '', password):
-        return False, None, 'Hatalı şifre'
-    return True, user, 'OK'
-
-
-def authenticate_ad(username, password):
-    """
-    Active Directory LDAP doğrulama.
-    Bind → kullanıcıyı ara → grup üyeliğini kontrol et → rol belirle.
-    (ok, role, full_name, msg)
-    """
-    if not HAS_LDAP:
-        return False, None, None, 'ldap3 modülü kurulu değil'
-
-    cfg = get_settings()
-    if cfg.get('ad_enabled') != '1':
-        return False, None, None, 'AD kimlik doğrulama etkin değil'
-
-    ad_server   = cfg.get('ad_server', '').strip()
-    ad_port     = int(cfg.get('ad_port', 389))
-    ad_domain   = cfg.get('ad_domain', '').strip()
-    ad_base_dn  = cfg.get('ad_base_dn', '').strip()
-    bind_user   = cfg.get('ad_bind_user', '').strip()
-    bind_pass   = cfg.get('ad_bind_password', '')
-    user_filter = cfg.get('ad_user_filter', '(sAMAccountName={username})')
-    admin_grp   = cfg.get('ad_admin_group', 'ReaR-Admins').strip()
-    user_grp    = cfg.get('ad_user_group', 'ReaR-Users').strip()
-
-    if not ad_server or not ad_domain:
-        return False, None, None, 'AD yapılandırması eksik'
-
-    try:
-        srv = LdapServer(ad_server, port=ad_port, get_info=ALL, connect_timeout=5)
-
-        # Bind kullanıcısı ile bağlan
-        bind_dn = f"{bind_user}@{ad_domain}" if bind_user else f"{username}@{ad_domain}"
-        bind_pw = bind_pass if bind_user else password
-
-        conn_bind = LdapConn(srv, user=bind_dn, password=bind_pw, auto_bind=True)
-
-        # Kullanıcıyı ara
-        search_filter = user_filter.replace('{username}', username)
-        conn_bind.search(
-            search_base=ad_base_dn,
-            search_filter=search_filter,
-            attributes=['distinguishedName', 'displayName', 'memberOf', 'sAMAccountName']
-        )
-
-        if not conn_bind.entries:
-            conn_bind.unbind()
-            return False, None, None, 'Kullanıcı AD\'de bulunamadı'
-
-        entry     = conn_bind.entries[0]
-        user_dn   = str(entry.distinguishedName)
-        full_name = str(entry.displayName) if entry.displayName else username
-        member_of = [str(g) for g in entry.memberOf] if entry.memberOf else []
-        conn_bind.unbind()
-
-        # Kullanıcı adına bind (şifre doğrulama)
-        user_upn = f"{username}@{ad_domain}"
-        try:
-            conn_user = LdapConn(srv, user=user_upn, password=password, auto_bind=True)
-            conn_user.unbind()
-        except LDAPException:
-            return False, None, None, 'AD şifre doğrulama başarısız'
-
-        # Grup üyeliği → rol
-        role = None
-        for grp_dn in member_of:
-            cn = grp_dn.split(',')[0].replace('CN=', '').replace('cn=', '')
-            if cn.lower() == admin_grp.lower():
-                role = 'admin'
-                break
-            if cn.lower() == user_grp.lower():
-                role = 'user'
-
-        if role is None:
-            return False, None, None, f'Kullanıcı yetkili bir AD grubunda değil ({admin_grp} / {user_grp})'
-
-        return True, role, full_name, 'OK'
-
-    except LDAPException as e:
-        return False, None, None, f'LDAP bağlantı hatası: {str(e)}'
-    except Exception as e:
-        return False, None, None, f'Hata: {str(e)}'
-
-
-def login_required(f):
-    @functools.wraps(f)
-    def decorated(*args, **kwargs):
-        if 'user_id' not in session:
-            # AJAX isteği ise JSON döndür, normal istek ise redirect
-            if (request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-                    or request.accept_mimetypes.best == 'application/json'
-                    or request.path.startswith('/api/')):
-                return jsonify({'ok': False, 'msg': 'Oturum süresi doldu, sayfayı yenileyin.'}), 401
-            return redirect(url_for('login', next=request.url))
-        # Session timeout kontrolü
-        cfg = get_settings()
-        timeout_min = int(cfg.get('session_timeout', 480))
-        last_active = session.get('last_active', 0)
-        if time.time() - last_active > timeout_min * 60:
-            session.clear()
-            if (request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-                    or request.accept_mimetypes.best == 'application/json'
-                    or request.path.startswith('/api/')):
-                return jsonify({'ok': False, 'msg': 'Oturum süresi doldu, sayfayı yenileyin.'}), 401
-            flash('Oturum süresi doldu.', 'warning')
-            return redirect(url_for('login'))
-        session['last_active'] = time.time()
-        return f(*args, **kwargs)
-    return decorated
-
-
-def admin_required(f):
-    @functools.wraps(f)
-    def decorated(*args, **kwargs):
-        if session.get('user_role') != 'admin':
-            flash('Bu işlem için yönetici yetkisi gerekli.', 'danger')
-            return redirect(url_for('dashboard'))
-        return f(*args, **kwargs)
-    return login_required(decorated)
 
 
 
 
 # ─────────────────────────────────────────────────────────────
-# ZAMANLAYICI (APScheduler)
+# ZAMANLAYICI (APScheduler) — moved to services/scheduler.py
+# init_scheduler, get_next_run, _add_scheduler_job, _remove_scheduler_job,
+# _restart_scheduler_with_timezone, _scheduler_run_backup
+# imported at top of file via: from services.scheduler import init_scheduler, ...
 # ─────────────────────────────────────────────────────────────
-def _scheduler_run_backup(schedule_id):
-    """APScheduler tarafından çağrılır."""
-    sched = schedule_repo.get_by_id(schedule_id)
-    if not sched or not sched['enabled']:
-        return
-    server = server_repo.get_by_id(sched['server_id'])
-    if not server:
-        return
-    if not server['rear_installed'] or not server['rear_configured']:
-        # ReaR hazır değil, zamanlanmış yedekleme atlandı
-        return
-
-    job_id = job_service.create_job(server['id'], 'backup', triggered_by='scheduler', schedule_id=schedule_id)
-    job_service.start_job_thread(job_service._do_backup, job_id, dict(server),
-                     sched['backup_type'] or 'mkbackup', 'scheduler', schedule_id)
-
-
-def init_scheduler():
-    global _scheduler
-    if not HAS_SCHEDULER:
-        return
-
-    cfg = get_settings()
-    tz = cfg.get('scheduler_timezone', 'Europe/Istanbul')
-    _scheduler = BackgroundScheduler(timezone=tz, daemon=True)
-    _scheduler.start()
-
-    # Mevcut aktif zamanlamaları yükle
-    schedules = schedule_repo.get_all_enabled()
-
-    for sched in schedules:
-        _add_scheduler_job(sched['id'],
-                           sched['cron_minute'], sched['cron_hour'],
-                           sched['cron_dom'],    sched['cron_month'],
-                           sched['cron_dow'])
-
-
-def _restart_scheduler_with_timezone(new_tz):
-    """Zamanlayıcıyı yeni timezone ile yeniden başlatır ve aktif zamanlamaları yeniden yükler."""
-    global _scheduler
-    if _scheduler and _scheduler.running:
-        _scheduler.shutdown(wait=False)
-
-    _scheduler = BackgroundScheduler(timezone=new_tz, daemon=True)
-    _scheduler.start()
-
-    schedules = schedule_repo.get_all_enabled()
-
-    for sched in schedules:
-        _add_scheduler_job(sched['id'],
-                           sched['cron_minute'], sched['cron_hour'],
-                           sched['cron_dom'],    sched['cron_month'],
-                           sched['cron_dow'])
-
-
-def _add_scheduler_job(schedule_id, minute, hour, dom, month, dow):
-    if not _scheduler:
-        return
-    job_id_str = f'sched_{schedule_id}'
-    try:
-        _scheduler.remove_job(job_id_str)
-    except Exception:
-        pass
-    try:
-        _scheduler.add_job(
-            _scheduler_run_backup,
-            CronTrigger(minute=minute, hour=hour, day=dom,
-                        month=month, day_of_week=dow),
-            args=[schedule_id],
-            id=job_id_str,
-            replace_existing=True,
-            misfire_grace_time=300
-        )
-    except Exception as e:
-        app.logger.error(f"Zamanlayıcı eklenemedi (sched {schedule_id}): {e}")
-
-
-def _remove_scheduler_job(schedule_id):
-    if not _scheduler:
-        return
-    try:
-        _scheduler.remove_job(f'sched_{schedule_id}')
-    except Exception:
-        pass
-
-
-def get_next_run(schedule_id):
-    if not _scheduler:
-        return None
-    try:
-        job = _scheduler.get_job(f'sched_{schedule_id}')
-        if job and job.next_run_time:
-            return job.next_run_time.strftime('%Y-%m-%d %H:%M:%S')
-    except Exception:
-        pass
-    return None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1437,10 +1217,8 @@ def api_status():
 @app.route('/api/schedules-status')
 @login_required
 def api_schedules_status():
-    if not _scheduler:
-        return jsonify({'jobs': []})
     jobs = []
-    for job in _scheduler.get_jobs():
+    for job in get_scheduler_jobs():
         jobs.append({
             'id': job.id,
             'next_run': job.next_run_time.strftime('%Y-%m-%d %H:%M:%S') if job.next_run_time else None

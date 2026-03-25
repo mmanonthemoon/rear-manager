@@ -17,16 +17,16 @@ from unittest.mock import MagicMock, patch, call
 
 def test_timezone_from_db():
     """init_scheduler reads scheduler_timezone from get_settings()."""
-    import app as app_module
+    import services.scheduler as sched_module
 
     mock_scheduler = MagicMock()
     mock_scheduler.running = False
 
-    with patch.object(app_module, 'get_settings', return_value={'scheduler_timezone': 'America/New_York'}):
-        with patch.object(app_module, 'BackgroundScheduler', return_value=mock_scheduler) as mock_bs:
-            with patch.object(app_module.schedule_repo, 'get_all_enabled', return_value=[]):
-                with patch.object(app_module, 'HAS_SCHEDULER', True):
-                    app_module.init_scheduler()
+    with patch.object(sched_module.settings_repo, 'get_settings', return_value={'scheduler_timezone': 'America/New_York'}):
+        with patch.object(sched_module, 'BackgroundScheduler', return_value=mock_scheduler) as mock_bs:
+            with patch.object(sched_module.schedule_repo, 'get_all_enabled', return_value=[]):
+                with patch.object(sched_module, 'HAS_SCHEDULER', True):
+                    sched_module.init_scheduler()
 
     mock_bs.assert_called_once_with(timezone='America/New_York', daemon=True)
     mock_scheduler.start.assert_called_once()
@@ -34,15 +34,15 @@ def test_timezone_from_db():
 
 def test_timezone_default_when_not_in_db():
     """init_scheduler defaults to Europe/Istanbul when no scheduler_timezone in settings."""
-    import app as app_module
+    import services.scheduler as sched_module
 
     mock_scheduler = MagicMock()
 
-    with patch.object(app_module, 'get_settings', return_value={}):
-        with patch.object(app_module, 'BackgroundScheduler', return_value=mock_scheduler) as mock_bs:
-            with patch.object(app_module.schedule_repo, 'get_all_enabled', return_value=[]):
-                with patch.object(app_module, 'HAS_SCHEDULER', True):
-                    app_module.init_scheduler()
+    with patch.object(sched_module.settings_repo, 'get_settings', return_value={}):
+        with patch.object(sched_module, 'BackgroundScheduler', return_value=mock_scheduler) as mock_bs:
+            with patch.object(sched_module.schedule_repo, 'get_all_enabled', return_value=[]):
+                with patch.object(sched_module, 'HAS_SCHEDULER', True):
+                    sched_module.init_scheduler()
 
     mock_bs.assert_called_once_with(timezone='Europe/Istanbul', daemon=True)
     mock_scheduler.start.assert_called_once()
@@ -50,7 +50,7 @@ def test_timezone_default_when_not_in_db():
 
 def test_scheduler_restart_reloads_jobs():
     """_restart_scheduler_with_timezone shuts down old scheduler, creates new, reloads jobs."""
-    import app as app_module
+    import services.scheduler as sched_module
 
     old_scheduler = MagicMock()
     old_scheduler.running = True
@@ -68,11 +68,11 @@ def test_scheduler_restart_reloads_jobs():
         'cron_dow': '*',
     }[k]
 
-    with patch.object(app_module, '_scheduler', old_scheduler, create=True):
-        with patch.object(app_module, 'BackgroundScheduler', return_value=new_scheduler) as mock_bs:
-            with patch.object(app_module.schedule_repo, 'get_all_enabled', return_value=[fake_sched]):
-                with patch.object(app_module, '_add_scheduler_job') as mock_add_job:
-                    app_module._restart_scheduler_with_timezone('UTC')
+    with patch.object(sched_module, '_scheduler', old_scheduler, create=True):
+        with patch.object(sched_module, 'BackgroundScheduler', return_value=new_scheduler) as mock_bs:
+            with patch.object(sched_module.schedule_repo, 'get_all_enabled', return_value=[fake_sched]):
+                with patch.object(sched_module, '_add_scheduler_job') as mock_add_job:
+                    sched_module._restart_scheduler_with_timezone('UTC')
 
     # Old scheduler shut down
     old_scheduler.shutdown.assert_called_once_with(wait=False)
