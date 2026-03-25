@@ -22,13 +22,9 @@ def test_timezone_from_db():
     mock_scheduler = MagicMock()
     mock_scheduler.running = False
 
-    # Mock DB returning enabled schedules (empty for simplicity)
-    mock_conn = MagicMock()
-    mock_conn.execute.return_value.fetchall.return_value = []
-
     with patch.object(app_module, 'get_settings', return_value={'scheduler_timezone': 'America/New_York'}):
         with patch.object(app_module, 'BackgroundScheduler', return_value=mock_scheduler) as mock_bs:
-            with patch.object(app_module, 'get_db', return_value=mock_conn):
+            with patch.object(app_module.schedule_repo, 'get_all_enabled', return_value=[]):
                 with patch.object(app_module, 'HAS_SCHEDULER', True):
                     app_module.init_scheduler()
 
@@ -41,12 +37,10 @@ def test_timezone_default_when_not_in_db():
     import app as app_module
 
     mock_scheduler = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.execute.return_value.fetchall.return_value = []
 
     with patch.object(app_module, 'get_settings', return_value={}):
         with patch.object(app_module, 'BackgroundScheduler', return_value=mock_scheduler) as mock_bs:
-            with patch.object(app_module, 'get_db', return_value=mock_conn):
+            with patch.object(app_module.schedule_repo, 'get_all_enabled', return_value=[]):
                 with patch.object(app_module, 'HAS_SCHEDULER', True):
                     app_module.init_scheduler()
 
@@ -63,21 +57,20 @@ def test_scheduler_restart_reloads_jobs():
 
     new_scheduler = MagicMock()
 
-    # Fake schedules in DB
-    fake_sched = {
+    # Fake schedules returned by schedule_repo
+    fake_sched = MagicMock()
+    fake_sched.__getitem__ = lambda self, k: {
         'id': 1,
         'cron_minute': '0',
         'cron_hour': '2',
         'cron_dom': '*',
         'cron_month': '*',
         'cron_dow': '*',
-    }
-    mock_conn = MagicMock()
-    mock_conn.execute.return_value.fetchall.return_value = [fake_sched]
+    }[k]
 
     with patch.object(app_module, '_scheduler', old_scheduler, create=True):
         with patch.object(app_module, 'BackgroundScheduler', return_value=new_scheduler) as mock_bs:
-            with patch.object(app_module, 'get_db', return_value=mock_conn):
+            with patch.object(app_module.schedule_repo, 'get_all_enabled', return_value=[fake_sched]):
                 with patch.object(app_module, '_add_scheduler_job') as mock_add_job:
                     app_module._restart_scheduler_with_timezone('UTC')
 

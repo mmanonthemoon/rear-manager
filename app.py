@@ -22,7 +22,10 @@ from config import (
     ANSIBLE_FILES_DIR, ANSIBLE_INV_DIR, ANSIBLE_HVARS_DIR, ANSIBLE_GVARS_DIR,
     SECRET_KEY_FILE, SCHEDULER_TIMEZONES,
 )
-from db import get_db, init_db
+from db import init_db
+from models import users as user_repo, servers as server_repo, schedules as schedule_repo, \
+    jobs as job_repo, settings as settings_repo
+from models import ansible as ansible_repo
 
 try:
     import paramiko
@@ -169,17 +172,11 @@ def calc_duration_filter(started_at, finished_at):
 
 
 def get_settings():
-    conn = get_db()
-    rows = conn.execute('SELECT key, value FROM settings').fetchall()
-    conn.close()
-    return {r['key']: r['value'] for r in rows}
+    return settings_repo.get_settings()
 
 
 def save_setting(key, value):
-    conn = get_db()
-    conn.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (key, value))
-    conn.commit()
-    conn.close()
+    settings_repo.save_setting(key, value)
 
 
 def _get_local_ip():
@@ -236,27 +233,15 @@ def get_nfs_target(hostname):
     Yapılandırmaya göre NFS backup URL'ini döner.
     nfs://<central_ip><nfs_export_path>/<safe_dirname>
     """
-    cfg  = get_settings()
-    ip   = cfg.get('central_ip', _get_local_ip()).strip() or _get_local_ip()
-    path = cfg.get('nfs_export_path', BACKUP_ROOT).strip() or BACKUP_ROOT
-    return f"nfs://{ip}{path}/{_safe_dirname(hostname)}"
+    return settings_repo.get_nfs_target(hostname, _get_local_ip, _safe_dirname, BACKUP_ROOT)
 
 
 # ─────────────────────────────────────────────────────────────
 # KİMLİK DOĞRULAMA
 # ─────────────────────────────────────────────────────────────
-def _get_user_by_username(username):
-    conn = get_db()
-    row = conn.execute(
-        'SELECT * FROM users WHERE username=? COLLATE NOCASE', (username,)
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
-
-
 def authenticate_local(username, password):
     """Yerel kullanıcı doğrulama. (ok, user_dict, msg)"""
-    user = _get_user_by_username(username)
+    user = user_repo.get_by_username(username)
     if not user:
         return False, None, 'Kullanıcı bulunamadı'
     if user['auth_type'] != 'local':
@@ -1003,54 +988,17 @@ def generate_rear_config(server, cfg, extra_server_exclude=''):
 # ─────────────────────────────────────────────────────────────
 def _append_log(job_id, text):
     """Backup job log'una satır ekle. 2 MB limitini aşarsa eski satırları kırpar."""
-    conn = get_db()
-    # Mevcut boyutu kontrol et
-    row = conn.execute(
-        "SELECT length(log_output) FROM backup_jobs WHERE id=?", (job_id,)
-    ).fetchone()
-    current_size = row[0] if row and row[0] else 0
-
-    if current_size > 2_000_000:  # 2 MB
-        # Son 500 KB'ı tut, eskisini at
-        conn.execute(
-            "UPDATE backup_jobs SET log_output = "
-            "'[... önceki loglar kırpıldı ...]\n' || substr(log_output, -500000) || ? "
-            "WHERE id=?",
-            (text + '\n', job_id)
-        )
-    else:
-        conn.execute(
-            "UPDATE backup_jobs SET log_output = log_output || ? WHERE id=?",
-            (text + '\n', job_id)
-        )
-    conn.commit()
-    conn.close()
+    job_repo.append_log(job_id, text)
 
 
 def _set_job_status(job_id, status, extra=None):
-    conn = get_db()
-    ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    if status in ('success', 'failed', 'cancelled'):
-        conn.execute(
-            "UPDATE backup_jobs SET status=?, finished_at=? WHERE id=?",
-            (status, ts, job_id)
-        )
-    else:
-        conn.execute("UPDATE backup_jobs SET status=? WHERE id=?", (status, job_id))
-    if extra:
-        for k, v in extra.items():
-            conn.execute(f"UPDATE backup_jobs SET {k}=? WHERE id=?", (v, job_id))
-    conn.commit()
-    conn.close()
+    job_repo.update_status(job_id, status, extra)
 
 
 def _run_install_rear(job_id, server_dict):
     log = lambda t: _append_log(job_id, t)
     _set_job_status(job_id, 'running')
-    conn = get_db()
-    conn.execute("UPDATE backup_jobs SET started_at=? WHERE id=?",
-                 (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), job_id))
-    conn.commit(); conn.close()
+    job_repo.set_started(job_id)
 
     log("=== ReaR Kurulumu Başlıyor ===")
     log("► OS bilgisi alınıyor...")
@@ -1188,12 +1136,7 @@ def _run_install_rear(job_id, server_dict):
     log(f"► ReaR Versiyonu: {ver_str}")
     log("")
 
-    conn = get_db()
-    conn.execute(
-        "UPDATE servers SET rear_installed=1, os_type=?, updated_at=datetime('now','localtime') WHERE id=?",
-        (os_info.split('\n')[0][:200], server_dict['id'])
-    )
-    conn.commit(); conn.close()
+    server_repo.update_rear_installed(server_dict['id'], os_info.split('\n')[0][:200])
 
     log("=== ReaR Kurulumu Tamamlandı ✓ ===")
     _set_job_status(job_id, 'success')
@@ -1202,10 +1145,7 @@ def _run_install_rear(job_id, server_dict):
 def _run_configure_rear(job_id, server_dict, rear_config_content):
     log = lambda t: _append_log(job_id, t)
     _set_job_status(job_id, 'running')
-    conn = get_db()
-    conn.execute("UPDATE backup_jobs SET started_at=? WHERE id=?",
-                 (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), job_id))
-    conn.commit(); conn.close()
+    job_repo.set_started(job_id)
 
     log("=== ReaR Yapılandırması Başlıyor ===")
     ssh_exec_stream(server_dict, 'mkdir -p /etc/rear', log)
@@ -1223,12 +1163,7 @@ def _run_configure_rear(job_id, server_dict, rear_config_content):
     log("► Doğrulanıyor...")
     ssh_exec_stream(server_dict, 'rear dump 2>&1 | head -20', log)
 
-    conn = get_db()
-    conn.execute(
-        "UPDATE servers SET rear_configured=1, updated_at=datetime('now','localtime') WHERE id=?",
-        (server_dict['id'],)
-    )
-    conn.commit(); conn.close()
+    server_repo.update_rear_configured(server_dict['id'])
 
     log("=== Yapılandırma Tamamlandı ✓ ===")
     _set_job_status(job_id, 'success')
@@ -1237,10 +1172,7 @@ def _run_configure_rear(job_id, server_dict, rear_config_content):
 def _do_backup(job_id, server_dict, backup_cmd='mkbackup', triggered_by='manual', schedule_id=None):
     log = lambda t: _append_log(job_id, t)
     _set_job_status(job_id, 'running')
-    conn = get_db()
-    conn.execute("UPDATE backup_jobs SET started_at=? WHERE id=?",
-                 (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), job_id))
-    conn.commit(); conn.close()
+    job_repo.set_started(job_id)
 
     log(f"=== ReaR {'Yedekleme' if backup_cmd == 'mkbackup' else 'ISO Oluşturma'} Başlıyor ===")
     log(f"► Tetikleyen  : {triggered_by}")
@@ -1291,12 +1223,11 @@ def _do_backup(job_id, server_dict, backup_cmd='mkbackup', triggered_by='manual'
 
     # Zamanlayıcı kaydını güncelle
     if schedule_id:
-        conn = get_db()
-        conn.execute(
-            "UPDATE schedules SET last_run=?, last_status=? WHERE id=?",
-            (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), status, schedule_id)
+        schedule_repo.update_last_run(
+            schedule_id,
+            datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            status
         )
-        conn.commit(); conn.close()
 
 
 def start_job_thread(target_fn, job_id, *args):
@@ -1319,15 +1250,7 @@ def start_job_thread(target_fn, job_id, *args):
 
 
 def create_job(server_id, job_type, triggered_by='manual', schedule_id=None):
-    conn = get_db()
-    c = conn.execute(
-        "INSERT INTO backup_jobs(server_id, job_type, status, triggered_by, schedule_id) "
-        "VALUES(?,?,?,?,?)",
-        (server_id, job_type, 'pending', triggered_by, schedule_id)
-    )
-    job_id = c.lastrowid
-    conn.commit(); conn.close()
-    return job_id
+    return job_repo.create(server_id, job_type, triggered_by, schedule_id)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1335,13 +1258,10 @@ def create_job(server_id, job_type, triggered_by='manual', schedule_id=None):
 # ─────────────────────────────────────────────────────────────
 def _scheduler_run_backup(schedule_id):
     """APScheduler tarafından çağrılır."""
-    conn = get_db()
-    sched = conn.execute('SELECT * FROM schedules WHERE id=?', (schedule_id,)).fetchone()
+    sched = schedule_repo.get_by_id(schedule_id)
     if not sched or not sched['enabled']:
-        conn.close()
         return
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sched['server_id'],)).fetchone()
-    conn.close()
+    server = server_repo.get_by_id(sched['server_id'])
     if not server:
         return
     if not server['rear_installed'] or not server['rear_configured']:
@@ -1364,9 +1284,7 @@ def init_scheduler():
     _scheduler.start()
 
     # Mevcut aktif zamanlamaları yükle
-    conn = get_db()
-    schedules = conn.execute('SELECT * FROM schedules WHERE enabled=1').fetchall()
-    conn.close()
+    schedules = schedule_repo.get_all_enabled()
 
     for sched in schedules:
         _add_scheduler_job(sched['id'],
@@ -1384,9 +1302,7 @@ def _restart_scheduler_with_timezone(new_tz):
     _scheduler = BackgroundScheduler(timezone=new_tz, daemon=True)
     _scheduler.start()
 
-    conn = get_db()
-    schedules = conn.execute('SELECT * FROM schedules WHERE enabled=1').fetchall()
-    conn.close()
+    schedules = schedule_repo.get_all_enabled()
 
     for sched in schedules:
         _add_scheduler_job(sched['id'],
@@ -1459,25 +1375,7 @@ def login():
             ok, role, full_name, msg = authenticate_ad(username, password)
             if ok:
                 # AD kullanıcısını DB'ye kaydet / güncelle
-                conn = get_db()
-                user = conn.execute(
-                    "SELECT * FROM users WHERE username=? COLLATE NOCASE AND auth_type='ad'",
-                    (username,)
-                ).fetchone()
-                if user:
-                    conn.execute(
-                        "UPDATE users SET role=?, full_name=?, last_login=datetime('now','localtime'), active=1 WHERE id=?",
-                        (role, full_name or username, user['id'])
-                    )
-                    user_id = user['id']
-                else:
-                    c = conn.execute(
-                        "INSERT INTO users(username, full_name, role, auth_type, is_builtin, active, last_login) "
-                        "VALUES(?,?,?,?,0,1,datetime('now','localtime'))",
-                        (username, full_name or username, role, 'ad')
-                    )
-                    user_id = c.lastrowid
-                conn.commit(); conn.close()
+                user_id, _ = user_repo.upsert_ad_user(username, full_name, role)
 
                 session['user_id']       = user_id
                 session['username']      = username
@@ -1491,12 +1389,7 @@ def login():
         else:  # local
             ok, user, msg = authenticate_local(username, password)
             if ok:
-                conn = get_db()
-                conn.execute(
-                    "UPDATE users SET last_login=datetime('now','localtime') WHERE id=?",
-                    (user['id'],)
-                )
-                conn.commit(); conn.close()
+                user_repo.update_last_login(user['id'])
 
                 session['user_id']     = user['id']
                 session['username']    = user['username']
@@ -1523,26 +1416,22 @@ def logout():
 @app.route('/')
 @login_required
 def dashboard():
-    conn = get_db()
-    servers = conn.execute('SELECT * FROM servers ORDER BY label').fetchall()
-    jobs    = conn.execute('''
-        SELECT j.*, s.label as server_label
-        FROM backup_jobs j JOIN servers s ON s.id=j.server_id
-        ORDER BY j.id DESC LIMIT 12
-    ''').fetchall()
+    servers = server_repo.get_all()
+    jobs    = job_repo.get_recent(12)
     with _job_lock:
         _running_count = len(_running_jobs)
+    server_stats = server_repo.get_dashboard_stats()
+    job_stats = job_repo.get_stats()
     stats = {
-        'total_servers':      conn.execute('SELECT COUNT(*) FROM servers').fetchone()[0],
-        'installed_servers':  conn.execute('SELECT COUNT(*) FROM servers WHERE rear_installed=1').fetchone()[0],
-        'configured_servers': conn.execute('SELECT COUNT(*) FROM servers WHERE rear_configured=1').fetchone()[0],
-        'total_backups':      conn.execute("SELECT COUNT(*) FROM backup_jobs WHERE job_type='backup'").fetchone()[0],
-        'success_backups':    conn.execute("SELECT COUNT(*) FROM backup_jobs WHERE job_type='backup' AND status='success'").fetchone()[0],
-        'failed_backups':     conn.execute("SELECT COUNT(*) FROM backup_jobs WHERE job_type='backup' AND status='failed'").fetchone()[0],
+        'total_servers':      server_stats['total_servers'],
+        'installed_servers':  server_stats['installed_servers'],
+        'configured_servers': server_stats['configured_servers'],
+        'total_backups':      job_stats['total_backups'],
+        'success_backups':    job_stats['success_backups'],
+        'failed_backups':     job_stats['failed_backups'],
         'running_jobs':       _running_count,
-        'active_schedules':   conn.execute("SELECT COUNT(*) FROM schedules WHERE enabled=1").fetchone()[0],
+        'active_schedules':   schedule_repo.get_count(),
     }
-    conn.close()
 
     backup_info = {}
     for s in servers:
@@ -1566,20 +1455,15 @@ def dashboard():
 @app.route('/servers')
 @login_required
 def servers_list():
-    conn = get_db()
-    servers = conn.execute('SELECT * FROM servers ORDER BY label').fetchall()
+    servers = server_repo.get_all()
     # Ansible bağlantı durumu
     ansible_map = {}
     for s in servers:
         if s['ansible_host_id']:
-            ah = conn.execute(
-                'SELECT id, name FROM ansible_hosts WHERE id=?',
-                (s['ansible_host_id'],)
-            ).fetchone()
-            ansible_map[s['id']] = dict(ah) if ah else None
+            ah = server_repo.get_ansible_host_info(s['ansible_host_id'])
+            ansible_map[s['id']] = ah
         else:
             ansible_map[s['id']] = None
-    conn.close()
     return render_template('servers.html', servers=servers, ansible_map=ansible_map)
 
 
@@ -1603,27 +1487,14 @@ def server_add():
         except (ValueError, TypeError):
             ssh_port = 22
 
-        conn = get_db()
-        cur = conn.execute('''
-            INSERT INTO servers(label, hostname, ip_address, ssh_port, ssh_user,
-                                ssh_auth, ssh_password,
-                                become_method, become_user, become_password, become_same_pass,
-                                exclude_dirs, notes)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ''', (
-            label, hostname, ip_address,
-            ssh_port, ssh_user,
+        server_row = server_repo.create(
+            label, hostname, ip_address, ssh_port, ssh_user,
             d.get('ssh_auth', 'password'), d.get('ssh_password', ''),
-            d.get('become_method', 'none'),
-            d.get('become_user', 'root'),
-            d.get('become_password', ''),
-            1 if d.get('become_same_pass') else 0,
+            d.get('become_method', 'none'), d.get('become_user', 'root'),
+            d.get('become_password', ''), 1 if d.get('become_same_pass') else 0,
             d.get('exclude_dirs', ''), d.get('notes', '')
-        ))
-        new_sid = cur.lastrowid
-        conn.commit()
-        server_row = conn.execute('SELECT * FROM servers WHERE id=?', (new_sid,)).fetchone()
-        conn.close()
+        )
+        new_sid = server_row['id']
 
         # Sunucu eklenince varsayılan ayarlarla /etc/rear/local.conf otomatik oluştur
         settings = get_settings()
@@ -1641,9 +1512,7 @@ def server_add():
 @app.route('/servers/<int:sid>/edit', methods=['GET', 'POST'])
 @login_required
 def server_edit(sid):
-    conn = get_db()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sid,)).fetchone()
-    conn.close()
+    server = server_repo.get_by_id(sid)
     if not server:
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
@@ -1665,25 +1534,13 @@ def server_edit(sid):
         except (ValueError, TypeError):
             ssh_port = 22
 
-        conn = get_db()
-        conn.execute('''
-            UPDATE servers SET label=?, hostname=?, ip_address=?, ssh_port=?,
-            ssh_user=?, ssh_auth=?, ssh_password=?,
-            become_method=?, become_user=?, become_password=?, become_same_pass=?,
-            exclude_dirs=?, notes=?,
-            updated_at=datetime('now','localtime')
-            WHERE id=?
-        ''', (
-            label, hostname, ip_address,
-            ssh_port, ssh_user,
+        server_repo.update(
+            sid, label, hostname, ip_address, ssh_port, ssh_user,
             d.get('ssh_auth', 'password'), d.get('ssh_password', ''),
-            d.get('become_method', 'none'),
-            d.get('become_user', 'root'),
-            d.get('become_password', ''),
-            1 if d.get('become_same_pass') else 0,
-            d.get('exclude_dirs', ''), d.get('notes', ''), sid
-        ))
-        conn.commit(); conn.close()
+            d.get('become_method', 'none'), d.get('become_user', 'root'),
+            d.get('become_password', ''), 1 if d.get('become_same_pass') else 0,
+            d.get('exclude_dirs', ''), d.get('notes', '')
+        )
         flash('Sunucu güncellendi.', 'success')
         return redirect(url_for('server_detail', sid=sid))
     cfg = get_settings()
@@ -1694,11 +1551,7 @@ def server_edit(sid):
 @app.route('/servers/<int:sid>/delete', methods=['POST'])
 @login_required
 def server_delete(sid):
-    conn = get_db()
-    conn.execute('DELETE FROM schedules WHERE server_id=?', (sid,))
-    conn.execute('DELETE FROM backup_jobs WHERE server_id=?', (sid,))
-    conn.execute('DELETE FROM servers WHERE id=?', (sid,))
-    conn.commit(); conn.close()
+    server_repo.delete(sid)
     flash('Sunucu silindi.', 'success')
     return redirect(url_for('servers_list'))
 
@@ -1740,11 +1593,10 @@ def server_bulk_add():
     def_same_pass   = 1 if request.form.get('def_become_same_pass', '1') == '1' else 0
     def_become_pass = request.form.get('def_become_password', '')
 
-    added = 0
-    skipped = 0
+    servers_to_add = []
     errors = []
+    skipped = 0
 
-    conn = get_db()
     for lineno, raw_line in enumerate(raw_text.splitlines(), start=1):
         line = raw_line.strip()
         # Boş satır veya yorum
@@ -1785,35 +1637,16 @@ def server_bulk_add():
                 skipped += 1
                 continue
 
-            # Zaten var mı?
-            exists = conn.execute(
-                'SELECT id FROM servers WHERE ip_address=? OR (hostname=? AND hostname != "")',
-                (ip, hostname)
-            ).fetchone()
-            if exists:
-                errors.append(f"Satır {lineno}: {ip} / {hostname} zaten mevcut, atlandı.")
-                skipped += 1
-                continue
-
-            conn.execute('''
-                INSERT INTO servers(label, hostname, ip_address, ssh_port, ssh_user,
-                                    ssh_auth, ssh_password,
-                                    become_method, become_user, become_password, become_same_pass,
-                                    notes)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-            ''', (
-                label, hostname, ip, port, ssh_user,
-                ssh_auth, ssh_pass,
-                bmethod, buser, bpass, bsame,
-                notes
-            ))
-            added += 1
+            servers_to_add.append((label, hostname, ip, port, ssh_user,
+                                   ssh_auth, ssh_pass, bmethod, buser, bpass, bsame, notes))
 
         except Exception as e:
             errors.append(f"Satır {lineno}: {str(e)} → '{line}'")
             skipped += 1
 
-    conn.commit(); conn.close()
+    added, repo_skipped, repo_errors = server_repo.bulk_create(servers_to_add)
+    skipped += repo_skipped
+    errors.extend(repo_errors)
 
     if added:
         flash(f'✓ {added} sunucu eklendi.{f"  {skipped} satır atlandı." if skipped else ""}', 'success')
@@ -1832,37 +1665,22 @@ def server_bulk_add():
 @app.route('/servers/<int:sid>')
 @login_required
 def server_detail(sid):
-    conn = get_db()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sid,)).fetchone()
+    server = server_repo.get_by_id(sid)
     if not server:
-        conn.close()
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
-    jobs = conn.execute(
-        'SELECT * FROM backup_jobs WHERE server_id=? ORDER BY id DESC LIMIT 20',
-        (sid,)
-    ).fetchall()
-    schedules = conn.execute(
-        'SELECT * FROM schedules WHERE server_id=? ORDER BY id DESC',
-        (sid,)
-    ).fetchall()
+    jobs = job_repo.get_by_server(sid)
+    schedules = schedule_repo.get_by_server(sid)
 
     # Ansible bağlantısı
     ansible_host = None
     if server['ansible_host_id']:
-        ah = conn.execute(
-            'SELECT * FROM ansible_hosts WHERE id=?', (server['ansible_host_id'],)
-        ).fetchone()
+        ah = ansible_repo.get_host_by_id(server['ansible_host_id'])
         if ah:
             ansible_host = dict(ah)
 
     # Bağlanabilecek mevcut Ansible hostları (henüz bağlı olmayanlar)
-    # IP veya hostname eşleşmesi öneri için
-    all_ansible_hosts = conn.execute(
-        'SELECT id, name, hostname FROM ansible_hosts ORDER BY name'
-    ).fetchall()
-
-    conn.close()
+    all_ansible_hosts = ansible_repo.get_hosts()
 
     backup_dir = os.path.join(BACKUP_ROOT, _safe_dirname(server['hostname']))
     backup_files = []
@@ -1914,10 +1732,8 @@ def server_ansible_auto_add(sid):
     SSH bilgilerini sunucudan kopyalar.
     Eğer aynı IP/hostname ile zaten bir Ansible host varsa onu bağlar.
     """
-    conn = get_db()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sid,)).fetchone()
+    server = server_repo.get_by_id(sid)
     if not server:
-        conn.close()
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
 
@@ -1925,27 +1741,17 @@ def server_ansible_auto_add(sid):
 
     # Zaten bağlı mı?
     if server['ansible_host_id']:
-        ah = conn.execute(
-            'SELECT id, name FROM ansible_hosts WHERE id=?', (server['ansible_host_id'],)
-        ).fetchone()
+        ah = ansible_repo.get_linked_host_info(server['ansible_host_id'])
         if ah:
-            conn.close()
             flash(f'Bu sunucu zaten "{ah["name"]}" Ansible hostuna bağlı.', 'info')
             return redirect(url_for('server_detail', sid=sid))
 
     # Aynı IP veya hostname ile mevcut Ansible host var mı?
-    existing = conn.execute(
-        'SELECT id, name FROM ansible_hosts WHERE hostname=? OR hostname=?',
-        (server['ip_address'], server['hostname'])
-    ).fetchone()
+    existing = ansible_repo.get_existing_ansible_host_for_server(server['ip_address'], server['hostname'])
 
     if existing:
         # Mevcut hosta bağla
-        conn.execute(
-            'UPDATE servers SET ansible_host_id=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
-            (existing['id'], sid)
-        )
-        conn.commit(); conn.close()
+        ansible_repo.link_server_to_host(sid, existing['id'])
         flash(f'Mevcut Ansible hostu "{existing["name"]}" ile bağlandı.', 'success')
         return redirect(url_for('server_detail', sid=sid))
 
@@ -1959,45 +1765,11 @@ def server_ansible_auto_add(sid):
         host_name = _hn.split('.')[0]       # web01.example.com → web01
 
     # İsim çakışması varsa suffix ekle
-    taken = conn.execute(
-        'SELECT name FROM ansible_hosts WHERE name=?', (host_name,)
-    ).fetchone()
-    if taken:
+    if ansible_repo.check_host_name_exists(host_name):
         host_name = f"{host_name}-rear"
 
     try:
-        c = conn.execute('''
-            INSERT INTO ansible_hosts(
-                name, hostname, os_type, connection_type,
-                ssh_port, ansible_user, ansible_pass, auth_type,
-                ssh_key_path, become_method, become_user, become_pass,
-                become_same, active, notes
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ''', (
-            host_name,
-            server['ip_address'],          # IP adresini kullan
-            'linux',                        # ReaR = Linux
-            'ssh',
-            server['ssh_port'] or 22,
-            server['ssh_user'],
-            server['ssh_password'] or '',
-            server['ssh_auth'] or 'password',
-            '',                             # key_path — gerekirse sonra güncellenir
-            server['become_method'] or 'none',
-            server['become_user'] or 'root',
-            server['become_password'] or '',
-            1 if server['become_same_pass'] else 0,
-            1,
-            f"ReaR sunucusundan otomatik oluşturuldu: {server['label']}"
-        ))
-        new_host_id = c.lastrowid
-
-        # Sunucuya bağla
-        conn.execute(
-            'UPDATE servers SET ansible_host_id=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
-            (new_host_id, sid)
-        )
-        conn.commit(); conn.close()
+        ansible_repo.create_host_from_server(server, host_name)
 
         # Inventory'i güncelle
         _generate_inventory()
@@ -2006,7 +1778,6 @@ def server_ansible_auto_add(sid):
               f'Gerekirse Ansible → Hostlar sayfasından düzenleyebilirsiniz.', 'success')
 
     except Exception as e:
-        conn.close()
         flash(f'Ansible host oluşturma hatası: {e}', 'danger')
 
     return redirect(url_for('server_detail', sid=sid))
@@ -2017,27 +1788,20 @@ def server_ansible_auto_add(sid):
 def server_ansible_link(sid):
     """Mevcut bir Ansible hostunu bu sunucuya bağlar."""
     ansible_host_id = request.form.get('ansible_host_id', type=int)
-    conn = get_db()
-    server = conn.execute('SELECT id FROM servers WHERE id=?', (sid,)).fetchone()
+
+    server = server_repo.get_by_id(sid)
     if not server:
-        conn.close()
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
 
     if ansible_host_id:
-        ah = conn.execute('SELECT name FROM ansible_hosts WHERE id=?', (ansible_host_id,)).fetchone()
+        ah = ansible_repo.get_linked_host_info(ansible_host_id)
         if ah:
-            conn.execute(
-                'UPDATE servers SET ansible_host_id=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
-                (ansible_host_id, sid)
-            )
-            conn.commit(); conn.close()
+            ansible_repo.link_server_to_host(sid, ansible_host_id)
             flash(f'"{ah["name"]}" Ansible hostuna bağlandı.', 'success')
         else:
-            conn.close()
             flash('Seçilen Ansible hostu bulunamadı.', 'danger')
     else:
-        conn.close()
         flash('Geçerli bir Ansible hostu seçin.', 'warning')
 
     return redirect(url_for('server_detail', sid=sid))
@@ -2047,12 +1811,7 @@ def server_ansible_link(sid):
 @login_required
 def server_ansible_unlink(sid):
     """Ansible host bağlantısını kaldırır (Ansible hostu silmez)."""
-    conn = get_db()
-    conn.execute(
-        'UPDATE servers SET ansible_host_id=NULL, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
-        (sid,)
-    )
-    conn.commit(); conn.close()
+    ansible_repo.unlink_server_host(sid)
     flash('Ansible host bağlantısı kaldırıldı.', 'info')
     return redirect(url_for('server_detail', sid=sid))
 
@@ -2063,9 +1822,7 @@ def server_ansible_unlink(sid):
 @app.route('/servers/<int:sid>/test', methods=['POST'])
 @login_required
 def server_test(sid):
-    conn = get_db()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sid,)).fetchone()
-    conn.close()
+    server = server_repo.get_by_id(sid)
     if not server:
         return jsonify({'ok': False, 'msg': 'Sunucu bulunamadı'})
     ok, msg = ssh_test_connection(dict(server))
@@ -2078,9 +1835,7 @@ def server_test(sid):
 @app.route('/servers/<int:sid>/install', methods=['POST'])
 @login_required
 def server_install_rear(sid):
-    conn = get_db()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sid,)).fetchone()
-    conn.close()
+    server = server_repo.get_by_id(sid)
     if not server:
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
@@ -2093,9 +1848,7 @@ def server_install_rear(sid):
 @app.route('/servers/<int:sid>/configure', methods=['GET', 'POST'])
 @login_required
 def server_configure(sid):
-    conn = get_db()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sid,)).fetchone()
-    conn.close()
+    server = server_repo.get_by_id(sid)
     if not server:
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
@@ -2114,9 +1867,7 @@ def server_configure(sid):
 
         # Sunucuya özel hariç dizinleri kaydet
         server_excl = request.form.get('server_exclude_dirs', '')
-        conn2 = get_db()
-        conn2.execute("UPDATE servers SET exclude_dirs=? WHERE id=?", (server_excl, sid))
-        conn2.commit(); conn2.close()
+        server_repo.update_exclude_dirs(sid, server_excl)
 
         srv_dict = dict(server)
         srv_dict['exclude_dirs'] = server_excl
@@ -2136,9 +1887,7 @@ def server_configure(sid):
 @app.route('/servers/<int:sid>/backup', methods=['POST'])
 @login_required
 def server_backup(sid):
-    conn = get_db()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sid,)).fetchone()
-    conn.close()
+    server = server_repo.get_by_id(sid)
     if not server:
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
@@ -2163,19 +1912,13 @@ def server_backup(sid):
 @app.route('/servers/<int:sid>/schedules/add', methods=['POST'])
 @login_required
 def schedule_add(sid):
-    conn = get_db()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sid,)).fetchone()
+    server = server_repo.get_by_id(sid)
     if not server:
-        conn.close()
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
 
     d = request.form
-    c = conn.execute('''
-        INSERT INTO schedules(server_id, backup_type, cron_minute, cron_hour,
-                              cron_dom, cron_month, cron_dow, enabled)
-        VALUES(?,?,?,?,?,?,?,1)
-    ''', (
+    sched_id = schedule_repo.create(
         sid,
         d.get('backup_type', 'mkbackup'),
         d.get('cron_minute', '0'),
@@ -2183,9 +1926,7 @@ def schedule_add(sid):
         d.get('cron_dom', '*'),
         d.get('cron_month', '*'),
         d.get('cron_dow', '*'),
-    ))
-    sched_id = c.lastrowid
-    conn.commit(); conn.close()
+    )
 
     _add_scheduler_job(sched_id,
                        d.get('cron_minute', '0'), d.get('cron_hour', '2'),
@@ -2199,16 +1940,11 @@ def schedule_add(sid):
 @app.route('/schedules/<int:scid>/toggle', methods=['POST'])
 @login_required
 def schedule_toggle(scid):
-    conn = get_db()
-    sched = conn.execute('SELECT * FROM schedules WHERE id=?', (scid,)).fetchone()
-    if not sched:
-        conn.close()
+    result = schedule_repo.toggle(scid)
+    if not result:
         return jsonify({'ok': False})
-    new_state = 0 if sched['enabled'] else 1
-    conn.execute('UPDATE schedules SET enabled=? WHERE id=?', (new_state, scid))
-    conn.commit()
+    sched, new_state = result
     sid = sched['server_id']
-    conn.close()
 
     if new_state:
         _add_scheduler_job(scid, sched['cron_minute'], sched['cron_hour'],
@@ -2223,15 +1959,11 @@ def schedule_toggle(scid):
 @app.route('/schedules/<int:scid>/delete', methods=['POST'])
 @login_required
 def schedule_delete(scid):
-    conn = get_db()
-    sched = conn.execute('SELECT * FROM schedules WHERE id=?', (scid,)).fetchone()
+    sched = schedule_repo.delete(scid)
     if not sched:
-        conn.close()
         flash('Zamanlama bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
     sid = sched['server_id']
-    conn.execute('DELETE FROM schedules WHERE id=?', (scid,))
-    conn.commit(); conn.close()
     _remove_scheduler_job(scid)
     flash(f'Zamanlama #{scid} silindi.', 'success')
     return redirect(url_for('server_detail', sid=sid))
@@ -2240,10 +1972,8 @@ def schedule_delete(scid):
 @app.route('/schedules/<int:scid>/run-now', methods=['POST'])
 @login_required
 def schedule_run_now(scid):
-    conn = get_db()
-    sched  = conn.execute('SELECT * FROM schedules WHERE id=?', (scid,)).fetchone()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sched['server_id'],)).fetchone() if sched else None
-    conn.close()
+    sched  = schedule_repo.get_by_id(scid)
+    server = server_repo.get_by_id(sched['server_id']) if sched else None
     if not sched or not server:
         flash('Bulunamadı.', 'danger')
         return redirect(url_for('servers_list'))
@@ -2266,29 +1996,13 @@ def schedule_run_now(scid):
 @app.route('/jobs')
 @login_required
 def jobs_list():
-    conn = get_db()
     # Filtreleme
     status_filter = request.args.get('status', '')
     type_filter   = request.args.get('type', '')
     server_filter = request.args.get('server', '')
 
-    query = '''
-        SELECT j.*, s.label as server_label, s.hostname
-        FROM backup_jobs j JOIN servers s ON s.id=j.server_id
-        WHERE 1=1
-    '''
-    params = []
-    if status_filter:
-        query += ' AND j.status=?'; params.append(status_filter)
-    if type_filter:
-        query += ' AND j.job_type=?'; params.append(type_filter)
-    if server_filter:
-        query += ' AND j.server_id=?'; params.append(server_filter)
-
-    query += ' ORDER BY j.id DESC LIMIT 300'
-    jobs    = conn.execute(query, params).fetchall()
-    servers = conn.execute('SELECT id, label FROM servers ORDER BY label').fetchall()
-    conn.close()
+    jobs    = job_repo.get_all_filtered(status_filter, type_filter, server_filter)
+    servers = job_repo.get_servers_list()
     with _job_lock:
         running_job_ids = set(_running_jobs.keys())
     return render_template('jobs.html', jobs=jobs, servers=servers,
@@ -2300,12 +2014,7 @@ def jobs_list():
 @app.route('/jobs/<int:jid>')
 @login_required
 def job_detail(jid):
-    conn = get_db()
-    job = conn.execute('''
-        SELECT j.*, s.label as server_label, s.hostname, s.ip_address
-        FROM backup_jobs j JOIN servers s ON s.id=j.server_id WHERE j.id=?
-    ''', (jid,)).fetchone()
-    conn.close()
+    job = job_repo.get_by_id(jid)
     if not job:
         flash('İş bulunamadı.', 'danger')
         return redirect(url_for('jobs_list'))
@@ -2319,9 +2028,7 @@ def job_detail(jid):
 @app.route('/jobs/<int:jid>/log')
 @login_required
 def job_log_api(jid):
-    conn = get_db()
-    row = conn.execute('SELECT log_output, status, finished_at FROM backup_jobs WHERE id=?', (jid,)).fetchone()
-    conn.close()
+    row = job_repo.get_log(jid)
     if not row:
         return jsonify({'log': '', 'status': 'notfound'})
     with _job_lock:
@@ -2342,10 +2049,8 @@ def job_cancel(jid):
 @app.route('/jobs/<int:jid>/delete', methods=['POST'])
 @login_required
 def job_delete(jid):
-    conn = get_db()
-    job = conn.execute('SELECT server_id FROM backup_jobs WHERE id=?', (jid,)).fetchone()
-    conn.execute('DELETE FROM backup_jobs WHERE id=?', (jid,))
-    conn.commit(); conn.close()
+    job = job_repo.get_server_id(jid)
+    job_repo.delete(jid)
     flash('İş silindi.', 'success')
     if job:
         return redirect(url_for('server_detail', sid=job['server_id']))
@@ -2361,7 +2066,6 @@ def job_delete(jid):
 def settings_page():
     if request.method == 'POST':
         tab = request.form.get('tab', 'general')
-        conn = get_db()
 
         if tab == 'general':
             keys = ['central_ip', 'nfs_export_path',
@@ -2378,11 +2082,9 @@ def settings_page():
                 import pytz
                 pytz.timezone(tz)  # validate
             except Exception:
-                conn.close()
                 flash('Geçersiz timezone seçimi.', 'danger')
                 return redirect(url_for('settings_page', tab='scheduler'))
             save_setting('scheduler_timezone', tz)
-            conn.close()
             if HAS_SCHEDULER:
                 _restart_scheduler_with_timezone(tz)
             flash('Zamanlayıcı ayarları kaydedildi.', 'success')
@@ -2390,10 +2092,8 @@ def settings_page():
         else:
             keys = []
 
-        for k in keys:
-            v = request.form.get(k, '')
-            conn.execute('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', (k, v))
-        conn.commit(); conn.close()
+        kv = {k: request.form.get(k, '') for k in keys}
+        settings_repo.save_many(kv)
         flash('Ayarlar kaydedildi.', 'success')
         return redirect(url_for('settings_page', tab=tab))
 
@@ -2449,9 +2149,7 @@ def generate_ssh_key():
 @app.route('/settings/copy-key/<int:sid>', methods=['POST'])
 @login_required
 def copy_ssh_key(sid):
-    conn = get_db()
-    server = conn.execute('SELECT * FROM servers WHERE id=?', (sid,)).fetchone()
-    conn.close()
+    server = server_repo.get_by_id(sid)
     if not server:
         return jsonify({'ok': False, 'msg': 'Sunucu bulunamadı'})
     kp = get_settings().get('ssh_key_path', KEY_PATH)
@@ -2490,9 +2188,7 @@ def test_ad():
 @login_required
 @admin_required
 def users_list():
-    conn = get_db()
-    users = conn.execute('SELECT * FROM users ORDER BY username').fetchall()
-    conn.close()
+    users = user_repo.get_all()
     return render_template('users.html', users=users)
 
 
@@ -2507,10 +2203,7 @@ def user_add():
             flash('Kullanıcı adı boş olamaz.', 'danger')
             return redirect(url_for('user_add'))
 
-        conn = get_db()
-        existing = conn.execute('SELECT id FROM users WHERE username=? COLLATE NOCASE', (uname,)).fetchone()
-        if existing:
-            conn.close()
+        if user_repo.check_username_exists(uname):
             flash('Bu kullanıcı adı zaten mevcut.', 'danger')
             return redirect(url_for('user_add'))
 
@@ -2518,16 +2211,11 @@ def user_add():
         if d.get('auth_type', 'local') == 'local':
             pw = d.get('password', '')
             if not pw:
-                conn.close()
                 flash('Yerel hesap için şifre gerekli.', 'danger')
                 return redirect(url_for('user_add'))
             pw_hash = generate_password_hash(pw)
 
-        conn.execute('''
-            INSERT INTO users(username, password_hash, full_name, role, auth_type, is_builtin, active)
-            VALUES(?,?,?,?,?,0,1)
-        ''', (uname, pw_hash, d.get('full_name', ''), d.get('role', 'user'), d.get('auth_type', 'local')))
-        conn.commit(); conn.close()
+        user_repo.create(uname, pw_hash, d.get('full_name', ''), d.get('role', 'user'), d.get('auth_type', 'local'))
         flash(f'Kullanıcı "{uname}" eklendi.', 'success')
         return redirect(url_for('users_list'))
     return render_template('user_form.html', user=None, title='Kullanıcı Ekle')
@@ -2537,30 +2225,25 @@ def user_add():
 @login_required
 @admin_required
 def user_edit(uid):
-    conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
-    conn.close()
+    user = user_repo.get_by_id(uid)
     if not user:
         flash('Kullanıcı bulunamadı.', 'danger')
         return redirect(url_for('users_list'))
 
     if request.method == 'POST':
         d = request.form
-        conn = get_db()
         pw_hash = user['password_hash']
         new_pw = d.get('password', '').strip()
         if new_pw:
             pw_hash = generate_password_hash(new_pw)
 
-        conn.execute('''
-            UPDATE users SET full_name=?, role=?, active=?, password_hash=? WHERE id=?
-        ''', (
+        user_repo.update_full(
+            uid,
             d.get('full_name', ''),
             d.get('role', 'user') if not user['is_builtin'] else 'admin',
             1 if d.get('active') else 0,
-            pw_hash, uid
-        ))
-        conn.commit(); conn.close()
+            pw_hash
+        )
         flash('Kullanıcı güncellendi.', 'success')
         return redirect(url_for('users_list'))
 
@@ -2571,22 +2254,17 @@ def user_edit(uid):
 @login_required
 @admin_required
 def user_delete(uid):
-    conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+    user = user_repo.get_by_id(uid)
     if not user:
-        conn.close()
         flash('Kullanıcı bulunamadı.', 'danger')
         return redirect(url_for('users_list'))
     if user['is_builtin']:
-        conn.close()
         flash('Yerleşik admin hesabı silinemez!', 'danger')
         return redirect(url_for('users_list'))
     if user['id'] == session.get('user_id'):
-        conn.close()
         flash('Kendi hesabınızı silemezsiniz!', 'danger')
         return redirect(url_for('users_list'))
-    conn.execute('DELETE FROM users WHERE id=?', (uid,))
-    conn.commit(); conn.close()
+    user_repo.delete(uid)
     flash('Kullanıcı silindi.', 'success')
     return redirect(url_for('users_list'))
 
@@ -2607,9 +2285,7 @@ def change_password():
             flash('Yeni şifreler eşleşmiyor.', 'danger')
             return redirect(url_for('change_password'))
 
-        conn = get_db()
-        user = conn.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone()
-        conn.close()
+        user = user_repo.get_by_id(session['user_id'])
 
         if not user or user['auth_type'] != 'local':
             flash('Bu işlem sadece yerel hesaplar için geçerlidir.', 'danger')
@@ -2619,10 +2295,7 @@ def change_password():
             flash('Mevcut şifre hatalı.', 'danger')
             return redirect(url_for('change_password'))
 
-        conn = get_db()
-        conn.execute('UPDATE users SET password_hash=? WHERE id=?',
-                     (generate_password_hash(new_pw), session['user_id']))
-        conn.commit(); conn.close()
+        user_repo.update_password(session['user_id'], generate_password_hash(new_pw))
         flash('Şifre değiştirildi.', 'success')
         return redirect(url_for('dashboard'))
 
@@ -2635,18 +2308,13 @@ def change_password():
 @app.route('/api/status')
 @login_required
 def api_status():
-    conn = get_db()
     running = []
     with _job_lock:
         _job_ids = list(_running_jobs.keys())
     for jid in _job_ids:
-        row = conn.execute(
-            'SELECT j.id, j.job_type, j.started_at, s.label FROM backup_jobs j '
-            'JOIN servers s ON s.id=j.server_id WHERE j.id=?', (jid,)
-        ).fetchone()
+        row = job_repo.get_running_job_info(jid)
         if row:
             running.append(dict(row))
-    conn.close()
     return jsonify({'running': running, 'count': len(running)})
 
 
@@ -2710,11 +2378,7 @@ def _generate_inventory() -> str:
     Host değişkenleri (şifre, become, port vb.) doğrudan inventory YAML'ına
     host_vars anahtarı olarak yazılır; Ansible bunları host başına okur.
     """
-    conn = get_db()
-    hosts  = conn.execute('SELECT * FROM ansible_hosts WHERE active=1 ORDER BY name').fetchall()
-    groups = conn.execute('SELECT * FROM ansible_groups ORDER BY name').fetchall()
-    hg     = conn.execute('SELECT * FROM ansible_host_groups').fetchall()
-    conn.close()
+    hosts, groups, hg = ansible_repo.get_hosts_active_with_groups()
 
     # host_id → [group_id, ...] mapping
     host_groups: dict = {}
@@ -2865,10 +2529,7 @@ def _sync_playbook_to_disk(pb: dict):
 
 def _sync_role_to_disk(role_id: int):
     """Rol dosyalarını diske yazar."""
-    conn = get_db()
-    role  = conn.execute('SELECT * FROM ansible_roles WHERE id=?', (role_id,)).fetchone()
-    files = conn.execute('SELECT * FROM ansible_role_files WHERE role_id=?', (role_id,)).fetchall()
-    conn.close()
+    role, files = ansible_repo.get_role_for_disk_sync(role_id)
     if not role:
         return
 
@@ -2890,48 +2551,18 @@ _ansible_run_lock = threading.Lock()
 
 def _append_run_log(run_id, text):
     """Ansible run log'una satır ekle. 2 MB limitini aşarsa eski satırları kırpar."""
-    conn = get_db()
-    row = conn.execute(
-        "SELECT length(output) FROM ansible_runs WHERE id=?", (run_id,)
-    ).fetchone()
-    current_size = row[0] if row and row[0] else 0
-
-    if current_size > 2_000_000:
-        conn.execute(
-            "UPDATE ansible_runs SET output = "
-            "'[... önceki loglar kırpıldı ...]\n' || substr(output, -500000) || ? "
-            "WHERE id=?",
-            (text + '\n', run_id)
-        )
-    else:
-        conn.execute(
-            "UPDATE ansible_runs SET output = output || ? WHERE id=?",
-            (text + '\n', run_id)
-        )
-    conn.commit(); conn.close()
+    ansible_repo.append_run_log(run_id, text)
 
 
 def _set_run_status(run_id, status, exit_code=None):
-    conn = get_db()
-    ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    if status in ('success', 'failed', 'cancelled'):
-        conn.execute(
-            "UPDATE ansible_runs SET status=?, finished_at=?, exit_code=? WHERE id=?",
-            (status, ts, exit_code, run_id)
-        )
-    else:
-        conn.execute("UPDATE ansible_runs SET status=? WHERE id=?", (status, run_id))
-    conn.commit(); conn.close()
+    ansible_repo.update_run_status(run_id, status, exit_code)
 
 
 def _do_ansible_run(run_id, playbook_path, extra_args: list):
     """Arka planda ansible-playbook çalıştırır."""
     log = lambda t: _append_run_log(run_id, t)
     _set_run_status(run_id, 'running')
-    conn = get_db()
-    conn.execute("UPDATE ansible_runs SET started_at=? WHERE id=?",
-                 (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), run_id))
-    conn.commit(); conn.close()
+    ansible_repo.set_run_started(run_id)
 
     # Inventory üret
     log("► Inventory üretiliyor...")
@@ -2974,10 +2605,7 @@ def _do_ansible_run(run_id, playbook_path, extra_args: list):
         )
 
         # Run kaydına pid sakla
-        conn = get_db()
-        conn.execute("UPDATE ansible_runs SET output=output||? WHERE id=?",
-                     (f"[PID: {proc.pid}]\n", run_id))
-        conn.commit(); conn.close()
+        ansible_repo.append_run_output_raw(run_id, f"[PID: {proc.pid}]\n")
 
         with _ansible_run_lock:
             _ansible_running[run_id] = proc
@@ -3009,21 +2637,8 @@ def _do_ansible_run(run_id, playbook_path, extra_args: list):
 @app.route('/ansible/')
 @login_required
 def ansible_dashboard():
-    conn = get_db()
-    stats = {
-        'total_hosts':     conn.execute('SELECT COUNT(*) FROM ansible_hosts WHERE active=1').fetchone()[0],
-        'total_groups':    conn.execute('SELECT COUNT(*) FROM ansible_groups').fetchone()[0],
-        'total_playbooks': conn.execute('SELECT COUNT(*) FROM ansible_playbooks').fetchone()[0],
-        'total_roles':     conn.execute('SELECT COUNT(*) FROM ansible_roles').fetchone()[0],
-        'total_runs':      conn.execute('SELECT COUNT(*) FROM ansible_runs').fetchone()[0],
-        'success_runs':    conn.execute("SELECT COUNT(*) FROM ansible_runs WHERE status='success'").fetchone()[0],
-        'failed_runs':     conn.execute("SELECT COUNT(*) FROM ansible_runs WHERE status='failed'").fetchone()[0],
-        'running_runs':    conn.execute("SELECT COUNT(*) FROM ansible_runs WHERE status='running'").fetchone()[0],
-    }
-    recent_runs = conn.execute('''
-        SELECT * FROM ansible_runs ORDER BY id DESC LIMIT 15
-    ''').fetchall()
-    conn.close()
+    stats = ansible_repo.get_dashboard_stats()
+    recent_runs = ansible_repo.get_recent_runs(15)
     ansible_ok  = _ansible_check()
     ansible_ver = _ansible_version() if ansible_ok else 'Kurulu değil'
     return render_template('ansible_dashboard.html',
@@ -3035,11 +2650,7 @@ def ansible_dashboard():
 @app.route('/ansible/hosts')
 @login_required
 def ansible_hosts():
-    conn = get_db()
-    hosts  = conn.execute('SELECT * FROM ansible_hosts ORDER BY name').fetchall()
-    groups = conn.execute('SELECT * FROM ansible_groups ORDER BY name').fetchall()
-    hg     = conn.execute('SELECT * FROM ansible_host_groups').fetchall()
-    conn.close()
+    hosts, groups, hg = ansible_repo.get_hosts_with_groups()
     hg_map = {}
     for row in hg:
         hg_map.setdefault(row['host_id'], []).append(row['group_id'])
@@ -3051,9 +2662,7 @@ def ansible_hosts():
 @app.route('/ansible/hosts/add', methods=['GET', 'POST'])
 @login_required
 def ansible_host_add():
-    conn = get_db()
-    groups = conn.execute('SELECT * FROM ansible_groups ORDER BY name').fetchall()
-    conn.close()
+    groups = ansible_repo.get_groups()
     if request.method == 'POST':
         return _save_ansible_host(None)
     settings = get_settings()
@@ -3078,12 +2687,9 @@ def ansible_host_bulk_add():
 
     os_type sütunu atlanırsa varsayılan değer kullanılır.
     """
-    conn = get_db()
-    groups = conn.execute('SELECT * FROM ansible_groups ORDER BY name').fetchall()
-    group_map = {g['name'].lower(): g['id'] for g in groups}
+    groups = ansible_repo.get_groups()
 
     if request.method == 'GET':
-        conn.close()
         return render_template('ansible_host_bulk.html', groups=groups)
 
     # ── POST: Metin veya CSV dosyası ──────────────────────────────
@@ -3096,7 +2702,6 @@ def ansible_host_bulk_add():
 
     if not raw_text.strip():
         flash('Veri girilmedi.', 'warning')
-        conn.close()
         return redirect(url_for('ansible_host_bulk_add'))
 
     # Varsayılan değerler
@@ -3111,9 +2716,9 @@ def ansible_host_bulk_add():
     def_transport   = request.form.get('def_transport', 'ntlm')
     def_group       = request.form.get('def_group', '').strip()
 
-    added   = 0
-    skipped = 0
-    errors  = []
+    hosts_to_add = []
+    parse_errors = []
+    pre_skipped = 0
 
     for lineno, raw_line in enumerate(raw_text.splitlines(), start=1):
         line = raw_line.strip()
@@ -3128,29 +2733,22 @@ def ansible_host_bulk_add():
             continue
 
         if len(parts) < 2:
-            errors.append(f"Satır {lineno}: En az 2 alan gerekli (name, hostname). → '{line}'")
-            skipped += 1
+            parse_errors.append(f"Satır {lineno}: En az 2 alan gerekli (name, hostname). → '{line}'")
+            pre_skipped += 1
             continue
 
         try:
             name     = parts[0]
             hostname = parts[1]
             if not name or not hostname:
-                errors.append(f"Satır {lineno}: Name veya hostname boş.")
-                skipped += 1
+                parse_errors.append(f"Satır {lineno}: Name veya hostname boş.")
+                pre_skipped += 1
                 continue
 
             # 3. sütun: os_type (linux/windows) — yoksa varsayılan
             os_type = parts[2].lower() if len(parts) > 2 and parts[2].lower() in ('linux','windows') else def_os
 
-            # Zaten var mı?
-            if conn.execute('SELECT id FROM ansible_hosts WHERE name=?', (name,)).fetchone():
-                errors.append(f"Satır {lineno}: '{name}' zaten mevcut, atlandı.")
-                skipped += 1
-                continue
-
             if os_type == 'windows':
-                # Windows: name, host, windows, [port], [user], [pass], [transport], [domain], [group], [notes]
                 winrm_port = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else def_winrm_port
                 user       = parts[4] if len(parts) > 4 and parts[4] else def_user
                 passwd     = parts[5] if len(parts) > 5 and parts[5] else def_pass
@@ -3158,27 +2756,15 @@ def ansible_host_bulk_add():
                 domain     = parts[7] if len(parts) > 7 else ''
                 grp_name   = parts[8].lower() if len(parts) > 8 and parts[8] else def_group.lower()
                 notes      = parts[9] if len(parts) > 9 else ''
-
-                conn.execute('''
-                    INSERT INTO ansible_hosts(
-                        name, hostname, os_type, connection_type,
-                        ssh_port, winrm_port, winrm_scheme,
-                        ansible_user, ansible_pass, auth_type,
-                        win_transport, win_domain,
-                        become_method, become_user, become_pass, become_same,
-                        notes, active)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
-                ''', (
-                    name, hostname, 'windows', 'winrm',
-                    22, winrm_port, 'http',
-                    user, passwd, 'password',
-                    transport, domain,
-                    'none', '', '', 0,
-                    notes
-                ))
-
+                hosts_to_add.append({
+                    'name': name, 'hostname': hostname, 'os_type': 'windows',
+                    'connection_type': 'winrm', 'ssh_port': 22,
+                    'winrm_port': winrm_port, 'winrm_scheme': 'http',
+                    'ansible_user': user, 'ansible_pass': passwd, 'auth_type': 'password',
+                    'become_method': 'none', 'become_user': '', 'become_pass': '', 'become_same': 0,
+                    'notes': notes, 'group_name': grp_name,
+                })
             else:
-                # Linux: name, host, linux, [port], [user], [pass], [become], [become_user], [become_same], [group], [notes]
                 ssh_port     = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else def_ssh_port
                 user         = parts[4] if len(parts) > 4 and parts[4] else def_user
                 passwd       = parts[5] if len(parts) > 5 and parts[5] else def_pass
@@ -3188,40 +2774,22 @@ def ansible_host_bulk_add():
                 become_same  = 1 if bsame_raw in ('1','true','evet','yes') else 0
                 grp_name     = parts[9].lower() if len(parts) > 9 and parts[9] else def_group.lower()
                 notes        = parts[10] if len(parts) > 10 else ''
-
-                conn.execute('''
-                    INSERT INTO ansible_hosts(
-                        name, hostname, os_type, connection_type,
-                        ssh_port, winrm_port, winrm_scheme,
-                        ansible_user, ansible_pass, auth_type,
-                        become_method, become_user, become_pass, become_same,
-                        notes, active)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
-                ''', (
-                    name, hostname, 'linux', 'ssh',
-                    ssh_port, 5985, 'http',
-                    user, passwd, 'password',
-                    become, become_user, '', become_same,
-                    notes
-                ))
-
-            new_id = conn.execute('SELECT id FROM ansible_hosts WHERE name=?', (name,)).fetchone()['id']
-
-            # Gruba ekle
-            if grp_name and grp_name in group_map:
-                conn.execute(
-                    'INSERT OR IGNORE INTO ansible_host_groups(host_id, group_id) VALUES(?,?)',
-                    (new_id, group_map[grp_name])
-                )
-
-            added += 1
+                hosts_to_add.append({
+                    'name': name, 'hostname': hostname, 'os_type': 'linux',
+                    'connection_type': 'ssh', 'ssh_port': ssh_port,
+                    'winrm_port': 5985, 'winrm_scheme': 'http',
+                    'ansible_user': user, 'ansible_pass': passwd, 'auth_type': 'password',
+                    'become_method': become, 'become_user': become_user, 'become_pass': '', 'become_same': become_same,
+                    'notes': notes, 'group_name': grp_name,
+                })
 
         except Exception as e:
-            errors.append(f"Satır {lineno}: {str(e)} → '{line}'")
-            skipped += 1
+            parse_errors.append(f"Satır {lineno}: {str(e)} → '{line}'")
+            pre_skipped += 1
 
-    conn.commit()
-    conn.close()
+    added, repo_skipped, repo_errors = ansible_repo.bulk_create_hosts(hosts_to_add)
+    skipped = pre_skipped + repo_skipped
+    errors = parse_errors + repo_errors
 
     if added:
         flash(f'✓ {added} host eklendi.' + (f'  {skipped} satır atlandı.' if skipped else ''), 'success')
@@ -3239,13 +2807,9 @@ def ansible_host_bulk_add():
 @app.route('/ansible/hosts/<int:hid>/edit', methods=['GET', 'POST'])
 @login_required
 def ansible_host_edit(hid):
-    conn = get_db()
-    host   = conn.execute('SELECT * FROM ansible_hosts WHERE id=?', (hid,)).fetchone()
-    groups = conn.execute('SELECT * FROM ansible_groups ORDER BY name').fetchall()
-    sel_groups = [r['group_id'] for r in
-                  conn.execute('SELECT group_id FROM ansible_host_groups WHERE host_id=?',
-                               (hid,)).fetchall()]
-    conn.close()
+    host = ansible_repo.get_host_by_id(hid)
+    groups = ansible_repo.get_groups()
+    sel_groups = ansible_repo.get_host_groups(hid)
     if not host:
         flash('Host bulunamadı.', 'danger')
         return redirect(url_for('ansible_hosts'))
@@ -3259,7 +2823,6 @@ def ansible_host_edit(hid):
 
 def _save_ansible_host(hid):
     d = request.form
-    conn = get_db()
     fields = {
         'name':           d.get('name', '').strip(),
         'hostname':       d.get('hostname', '').strip(),
@@ -3285,42 +2848,13 @@ def _save_ansible_host(hid):
     sel_groups = request.form.getlist('group_ids')
 
     if hid:
-        conn.execute('''
-            UPDATE ansible_hosts SET
-              name=:name, hostname=:hostname, os_type=:os_type,
-              connection_type=:connection_type, ssh_port=:ssh_port,
-              winrm_port=:winrm_port, winrm_scheme=:winrm_scheme,
-              ansible_user=:ansible_user, ansible_pass=:ansible_pass,
-              auth_type=:auth_type, ssh_key_path=:ssh_key_path,
-              win_domain=:win_domain, win_transport=:win_transport,
-              become_method=:become_method, become_user=:become_user,
-              become_pass=:become_pass, become_same=:become_same,
-              vars_yaml=:vars_yaml, notes=:notes, active=:active
-            WHERE id=:id
-        ''', {**fields, 'id': hid})
-        conn.execute('DELETE FROM ansible_host_groups WHERE host_id=?', (hid,))
-        for gid in sel_groups:
-            conn.execute('INSERT OR IGNORE INTO ansible_host_groups(host_id,group_id) VALUES(?,?)',
-                         (hid, int(gid)))
-        conn.commit(); conn.close()
+        ansible_repo.update_host(hid, fields)
+        ansible_repo.set_host_groups(hid, sel_groups)
         flash(f'Host "{fields["name"]}" güncellendi.', 'success')
         return redirect(url_for('ansible_host_edit', hid=hid))
     else:
-        c = conn.execute('''
-            INSERT INTO ansible_hosts(name,hostname,os_type,connection_type,ssh_port,
-              winrm_port,winrm_scheme,ansible_user,ansible_pass,auth_type,ssh_key_path,
-              win_domain,win_transport,become_method,become_user,become_pass,become_same,
-              vars_yaml,notes,active)
-            VALUES(:name,:hostname,:os_type,:connection_type,:ssh_port,
-              :winrm_port,:winrm_scheme,:ansible_user,:ansible_pass,:auth_type,:ssh_key_path,
-              :win_domain,:win_transport,:become_method,:become_user,:become_pass,:become_same,
-              :vars_yaml,:notes,:active)
-        ''', fields)
-        new_id = c.lastrowid
-        for gid in sel_groups:
-            conn.execute('INSERT OR IGNORE INTO ansible_host_groups(host_id,group_id) VALUES(?,?)',
-                         (new_id, int(gid)))
-        conn.commit(); conn.close()
+        new_id = ansible_repo.create_host(**fields)
+        ansible_repo.set_host_groups(new_id, sel_groups)
         flash(f'Host "{fields["name"]}" eklendi.', 'success')
         return redirect(url_for('ansible_hosts'))
 
@@ -3328,11 +2862,7 @@ def _save_ansible_host(hid):
 @app.route('/ansible/hosts/<int:hid>/delete', methods=['POST'])
 @login_required
 def ansible_host_delete(hid):
-    conn = get_db()
-    h = conn.execute('SELECT name FROM ansible_hosts WHERE id=?', (hid,)).fetchone()
-    conn.execute('DELETE FROM ansible_host_groups WHERE host_id=?', (hid,))
-    conn.execute('DELETE FROM ansible_hosts WHERE id=?', (hid,))
-    conn.commit(); conn.close()
+    h = ansible_repo.delete_host(hid)
     flash(f'Host "{h["name"] if h else hid}" silindi.', 'success')
     return redirect(url_for('ansible_hosts'))
 
@@ -3341,7 +2871,6 @@ def ansible_host_delete(hid):
 @app.route('/ansible/groups', methods=['GET', 'POST'])
 @login_required
 def ansible_groups():
-    conn = get_db()
     if request.method == 'POST':
         action = request.form.get('action', 'add')
         if action == 'add':
@@ -3349,36 +2878,23 @@ def ansible_groups():
             desc = request.form.get('description', '').strip()
             if name:
                 try:
-                    conn.execute('INSERT INTO ansible_groups(name,description) VALUES(?,?)',
-                                 (name, desc))
-                    conn.commit()
+                    ansible_repo.create_group(name, desc)
                     flash(f'Grup "{name}" eklendi.', 'success')
                 except Exception:
                     flash('Grup adı zaten mevcut.', 'danger')
         elif action == 'delete':
             gid = int(request.form.get('gid', 0))
-            conn.execute('DELETE FROM ansible_host_groups WHERE group_id=?', (gid,))
-            conn.execute('DELETE FROM ansible_groups WHERE id=?', (gid,))
-            conn.commit()
+            ansible_repo.delete_group(gid)
             flash('Grup silindi.', 'success')
         elif action == 'save_vars':
             gid   = int(request.form.get('gid', 0))
             vyaml = request.form.get('vars_yaml', '')
-            conn.execute('UPDATE ansible_groups SET vars_yaml=? WHERE id=?', (vyaml, gid))
-            conn.commit()
+            ansible_repo.save_group_vars(gid, vyaml)
             flash('Grup değişkenleri kaydedildi.', 'success')
-        conn.close()
         return redirect(url_for('ansible_groups'))
 
-    groups = conn.execute('SELECT * FROM ansible_groups ORDER BY name').fetchall()
-    # Her grup için host sayısı
-    hcounts = {}
-    for g in groups:
-        cnt = conn.execute(
-            'SELECT COUNT(*) FROM ansible_host_groups WHERE group_id=?', (g['id'],)
-        ).fetchone()[0]
-        hcounts[g['id']] = cnt
-    conn.close()
+    groups = ansible_repo.get_groups()
+    hcounts = ansible_repo.get_group_host_counts(groups)
     return render_template('ansible_groups.html', groups=groups, hcounts=hcounts)
 
 
@@ -3386,18 +2902,12 @@ def ansible_groups():
 @app.route('/ansible/playbooks')
 @login_required
 def ansible_playbooks():
-    conn = get_db()
-    pbs   = conn.execute('SELECT * FROM ansible_playbooks ORDER BY name').fetchall()
-    # Son çalışma bilgisi
+    pbs = ansible_repo.get_playbooks()
     last_runs = {}
     for pb in pbs:
-        r = conn.execute(
-            "SELECT * FROM ansible_runs WHERE playbook_id=? ORDER BY id DESC LIMIT 1",
-            (pb['id'],)
-        ).fetchone()
+        r = ansible_repo.get_playbook_last_run(pb['id'])
         if r:
-            last_runs[pb['id']] = dict(r)
-    conn.close()
+            last_runs[pb['id']] = r
     return render_template('ansible_playbooks.html', playbooks=pbs, last_runs=last_runs)
 
 
@@ -3406,9 +2916,7 @@ def ansible_playbooks():
 def ansible_playbook_add():
     if request.method == 'POST':
         return _save_playbook(None)
-    conn = get_db()
-    groups = conn.execute('SELECT name FROM ansible_groups ORDER BY name').fetchall()
-    conn.close()
+    groups = ansible_repo.get_group_names()
     return render_template('ansible_playbook_editor.html',
                            pb=None, title='Yeni Playbook', groups=groups)
 
@@ -3416,10 +2924,8 @@ def ansible_playbook_add():
 @app.route('/ansible/playbooks/<int:pid>/edit', methods=['GET', 'POST'])
 @login_required
 def ansible_playbook_edit(pid):
-    conn = get_db()
-    pb     = conn.execute('SELECT * FROM ansible_playbooks WHERE id=?', (pid,)).fetchone()
-    groups = conn.execute('SELECT name FROM ansible_groups ORDER BY name').fetchall()
-    conn.close()
+    pb = ansible_repo.get_playbook_by_id(pid)
+    groups = ansible_repo.get_group_names()
     if not pb:
         flash('Playbook bulunamadı.', 'danger')
         return redirect(url_for('ansible_playbooks'))
@@ -3440,24 +2946,14 @@ def _save_playbook(pid):
         flash('Playbook adı zorunlu.', 'danger')
         return redirect(url_for('ansible_playbooks'))
 
-    conn = get_db()
     if pid:
-        conn.execute('''
-            UPDATE ansible_playbooks SET name=?, description=?, content=?, tags=?,
-            updated_at=datetime('now','localtime') WHERE id=?
-        ''', (name, desc, content, tags, pid))
-        conn.commit(); conn.close()
+        ansible_repo.update_playbook(pid, name, desc, content, tags)
         # Diske yaz
         _sync_playbook_to_disk({'name': name, 'content': content})
         flash('Playbook kaydedildi.', 'success')
         return redirect(url_for('ansible_playbook_edit', pid=pid))
     else:
-        c = conn.execute('''
-            INSERT INTO ansible_playbooks(name, description, content, tags)
-            VALUES(?,?,?,?)
-        ''', (name, desc, content, tags))
-        new_id = c.lastrowid
-        conn.commit(); conn.close()
+        new_id = ansible_repo.create_playbook(name, desc, content, tags)
         _sync_playbook_to_disk({'name': name, 'content': content})
         flash(f'Playbook "{name}" oluşturuldu.', 'success')
         return redirect(url_for('ansible_playbook_edit', pid=new_id))
@@ -3466,10 +2962,7 @@ def _save_playbook(pid):
 @app.route('/ansible/playbooks/<int:pid>/delete', methods=['POST'])
 @login_required
 def ansible_playbook_delete(pid):
-    conn = get_db()
-    pb = conn.execute('SELECT * FROM ansible_playbooks WHERE id=?', (pid,)).fetchone()
-    conn.execute('DELETE FROM ansible_playbooks WHERE id=?', (pid,))
-    conn.commit(); conn.close()
+    pb = ansible_repo.delete_playbook(pid)
     if pb:
         # Diskten sil
         safe_name = re.sub(r'[^\w\-]', '_', pb['name']) + '.yml'
@@ -3483,11 +2976,9 @@ def ansible_playbook_delete(pid):
 @app.route('/ansible/playbooks/<int:pid>/run', methods=['GET', 'POST'])
 @login_required
 def ansible_playbook_run(pid):
-    conn  = get_db()
-    pb     = conn.execute('SELECT * FROM ansible_playbooks WHERE id=?', (pid,)).fetchone()
-    groups = conn.execute('SELECT name FROM ansible_groups ORDER BY name').fetchall()
-    hosts  = conn.execute('SELECT name FROM ansible_hosts WHERE active=1 ORDER BY name').fetchall()
-    conn.close()
+    pb     = ansible_repo.get_playbook_by_id(pid)
+    groups = ansible_repo.get_group_names()
+    hosts  = ansible_repo.get_host_names_active()
     if not pb:
         flash('Playbook bulunamadı.', 'danger')
         return redirect(url_for('ansible_playbooks'))
@@ -3524,15 +3015,15 @@ def ansible_playbook_run(pid):
         extra_args.append('--check')
 
     # Run kaydı oluştur
-    conn = get_db()
-    c = conn.execute('''
-        INSERT INTO ansible_runs(playbook_id, playbook_name, inventory, extra_vars,
-                                 limit_hosts, tags_run, status, triggered_by)
-        VALUES(?,?,?,?,?,?,?,?)
-    ''', (pid, pb['name'], limit or 'all', extra_vars, limit, tags_run, 'pending',
-          session.get('username', 'system')))
-    run_id = c.lastrowid
-    conn.commit(); conn.close()
+    run_id = ansible_repo.create_run(
+        playbook_id=pid,
+        playbook_name=pb['name'],
+        inventory=limit or 'all',
+        extra_vars=extra_vars,
+        limit_hosts=limit,
+        tags_run=tags_run,
+        triggered_by=session.get('username', 'system')
+    )
 
     # Thread başlat
     t = threading.Thread(
@@ -3552,23 +3043,14 @@ def ansible_playbook_run(pid):
 @app.route('/ansible/runs')
 @login_required
 def ansible_runs():
-    conn = get_db()
-    runs = conn.execute('''
-        SELECT r.*, p.name as pb_file
-        FROM ansible_runs r
-        LEFT JOIN ansible_playbooks p ON p.id = r.playbook_id
-        ORDER BY r.id DESC LIMIT 100
-    ''').fetchall()
-    conn.close()
+    runs = ansible_repo.get_runs(limit=100)
     return render_template('ansible_runs.html', runs=runs)
 
 
 @app.route('/ansible/runs/<int:rid>')
 @login_required
 def ansible_run_detail(rid):
-    conn = get_db()
-    run = conn.execute('SELECT * FROM ansible_runs WHERE id=?', (rid,)).fetchone()
-    conn.close()
+    run = ansible_repo.get_run_by_id(rid)
     if not run:
         flash('Çalışma bulunamadı.', 'danger')
         return redirect(url_for('ansible_runs'))
@@ -3596,9 +3078,7 @@ def ansible_run_cancel(rid):
 @app.route('/ansible/runs/<int:rid>/delete', methods=['POST'])
 @login_required
 def ansible_run_delete(rid):
-    conn = get_db()
-    conn.execute('DELETE FROM ansible_runs WHERE id=?', (rid,))
-    conn.commit(); conn.close()
+    ansible_repo.delete_run(rid)
     flash(f'Çalışma #{rid} silindi.', 'success')
     return redirect(url_for('ansible_runs'))
 
@@ -3607,14 +3087,7 @@ def ansible_run_delete(rid):
 @app.route('/ansible/roles')
 @login_required
 def ansible_roles():
-    conn = get_db()
-    roles = conn.execute('''
-        SELECT r.*,
-               (SELECT COUNT(*) FROM ansible_role_files f WHERE f.role_id=r.id) as file_count
-        FROM ansible_roles r
-        ORDER BY r.name
-    ''').fetchall()
-    conn.close()
+    roles = ansible_repo.get_roles()
     return render_template('ansible_roles.html', roles=roles)
 
 
@@ -3626,30 +3099,14 @@ def ansible_role_add():
     if not name:
         flash('Rol adı zorunlu.', 'danger')
         return redirect(url_for('ansible_roles'))
-    conn = get_db()
     role_id = None
     try:
-        c = conn.execute('INSERT INTO ansible_roles(name,description) VALUES(?,?)', (name, desc))
-        role_id = c.lastrowid
-        for section, (fname, fcontent) in {
-            'tasks':    ('main.yml', f'---\n# Tasks for role: {name}\n'),
-            'handlers': ('main.yml', f'---\n# Handlers for role: {name}\n'),
-            'vars':     ('main.yml', f'---\n# Variables for role: {name}\n'),
-            'defaults': ('main.yml', f'---\n# Default variables for role: {name}\n'),
-            'meta':     ('main.yml', '---\ndependencies: []\n'),
-        }.items():
-            conn.execute(
-                'INSERT INTO ansible_role_files(role_id,section,filename,content) VALUES(?,?,?,?)',
-                (role_id, section, fname, fcontent)
-            )
-        conn.commit()
+        role_id = ansible_repo.create_role(name, desc)
         _sync_role_to_disk(role_id)
         flash(f'Rol "{name}" oluşturuldu.', 'success')
     except Exception as e:
-        conn.rollback()
         flash(f'Hata: {e}', 'danger')
         role_id = None
-    conn.close()
 
     if role_id:
         return redirect(url_for('ansible_role_edit', rid=role_id))
@@ -3665,27 +3122,12 @@ def ansible_role_add_go():
     if not name:
         flash('Rol adı zorunlu.', 'danger')
         return redirect(url_for('ansible_roles'))
-    conn = get_db()
     try:
-        c = conn.execute('INSERT INTO ansible_roles(name,description) VALUES(?,?)', (name, desc))
-        role_id = c.lastrowid
-        for section, fname, fcontent in [
-            ('tasks',    'main.yml', f'---\n# Tasks for {name}\n'),
-            ('handlers', 'main.yml', f'---\n# Handlers for {name}\n'),
-            ('vars',     'main.yml', f'---\n# Variables for {name}\n'),
-            ('defaults', 'main.yml', f'---\n# Default vars for {name}\n'),
-            ('meta',     'main.yml', '---\ndependencies: []\n'),
-        ]:
-            conn.execute(
-                'INSERT INTO ansible_role_files(role_id,section,filename,content) VALUES(?,?,?,?)',
-                (role_id, section, fname, fcontent)
-            )
-        conn.commit(); conn.close()
+        role_id = ansible_repo.create_role(name, desc)
         _sync_role_to_disk(role_id)
         flash(f'Rol "{name}" oluşturuldu.', 'success')
         return redirect(url_for('ansible_role_edit', rid=role_id))
     except Exception as e:
-        conn.close()
         flash(f'Hata: {e}', 'danger')
         return redirect(url_for('ansible_roles'))
 
@@ -3693,13 +3135,7 @@ def ansible_role_add_go():
 @app.route('/ansible/roles/<int:rid>')
 @login_required
 def ansible_role_edit(rid):
-    conn = get_db()
-    role  = conn.execute('SELECT * FROM ansible_roles WHERE id=?', (rid,)).fetchone()
-    files = conn.execute(
-        "SELECT * FROM ansible_role_files WHERE role_id=? ORDER BY section,filename",
-        (rid,)
-    ).fetchall()
-    conn.close()
+    role, files = ansible_repo.get_role_by_id(rid)
     if not role:
         flash('Rol bulunamadı.', 'danger')
         return redirect(url_for('ansible_roles'))
@@ -3715,11 +3151,8 @@ def ansible_role_edit(rid):
 def ansible_role_save_file(rid):
     fid     = request.form.get('file_id')
     content = request.form.get('content', '')
-    conn = get_db()
     if fid:
-        conn.execute('UPDATE ansible_role_files SET content=? WHERE id=? AND role_id=?',
-                     (content, int(fid), rid))
-    conn.commit(); conn.close()
+        ansible_repo.update_role_file(int(fid), rid, content)
     _sync_role_to_disk(rid)
     return jsonify({'ok': True})
 
@@ -3729,29 +3162,19 @@ def ansible_role_save_file(rid):
 def ansible_role_add_file(rid):
     section  = request.form.get('section', 'tasks')
     filename = request.form.get('filename', 'new_file.yml').strip()
-    conn = get_db()
     try:
-        conn.execute('''
-            INSERT INTO ansible_role_files(role_id,section,filename,content)
-            VALUES(?,?,?,?)
-        ''', (rid, section, filename, '---\n'))
-        conn.commit()
+        ansible_repo.create_role_file(rid, section, filename, '---\n')
         _sync_role_to_disk(rid)
         flash(f'{section}/{filename} oluşturuldu.', 'success')
     except Exception:
         flash('Dosya zaten mevcut.', 'danger')
-    conn.close()
     return redirect(url_for('ansible_role_edit', rid=rid))
 
 
 @app.route('/ansible/roles/<int:rid>/delete', methods=['POST'])
 @login_required
 def ansible_role_delete(rid):
-    conn = get_db()
-    role = conn.execute('SELECT name FROM ansible_roles WHERE id=?', (rid,)).fetchone()
-    conn.execute('DELETE FROM ansible_role_files WHERE role_id=?', (rid,))
-    conn.execute('DELETE FROM ansible_roles WHERE id=?', (rid,))
-    conn.commit(); conn.close()
+    role = ansible_repo.delete_role(rid)
     if role:
         import shutil
         try:
@@ -3766,12 +3189,7 @@ def ansible_role_delete(rid):
 @app.route('/api/ansible/run-status/<int:rid>')
 @login_required
 def api_ansible_run_status(rid):
-    conn = get_db()
-    run  = conn.execute(
-        'SELECT status, exit_code, started_at, finished_at, '
-        'length(output) as out_len FROM ansible_runs WHERE id=?', (rid,)
-    ).fetchone()
-    conn.close()
+    run = ansible_repo.get_run_status(rid)
     if not run:
         return jsonify({'error': 'not found'}), 404
     return jsonify(dict(run))
@@ -3782,12 +3200,7 @@ def api_ansible_run_status(rid):
 def api_ansible_run_output(rid):
     """Son N satırı döner (polling için)."""
     offset = int(request.args.get('offset', 0))
-    conn = get_db()
-    row = conn.execute(
-        'SELECT substr(output,?) as chunk, status, finished_at FROM ansible_runs WHERE id=?',
-        (offset + 1, rid)
-    ).fetchone()
-    conn.close()
+    row = ansible_repo.get_run_output(rid, offset)
     if not row:
         return jsonify({'chunk': '', 'status': 'unknown'})
     return jsonify({'chunk': row['chunk'] or '', 'status': row['status'],
@@ -3799,9 +3212,7 @@ def api_ansible_run_output(rid):
 def api_ansible_ping_host():
     """Tek bir hosta ansible ping atar (bağlantı testi)."""
     hid = request.json.get('host_id')
-    conn = get_db()
-    host = conn.execute('SELECT * FROM ansible_hosts WHERE id=?', (hid,)).fetchone()
-    conn.close()
+    host = ansible_repo.get_host_by_id(hid)
     if not host:
         return jsonify({'ok': False, 'msg': 'Host bulunamadı.'})
 
