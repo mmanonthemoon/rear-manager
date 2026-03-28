@@ -1,6 +1,7 @@
 """Servers Blueprint — /servers/* routes."""
 
 import os
+import sqlite3
 import datetime
 import subprocess
 
@@ -201,7 +202,7 @@ def server_bulk_add():
             servers_to_add.append((label, hostname, ip, port, ssh_user,
                                    ssh_auth, ssh_pass, bmethod, buser, bpass, bsame, notes))
 
-        except Exception as e:
+        except (ValueError, IndexError, TypeError) as e:
             errors.append(f"Satır {lineno}: {str(e)} → '{line}'")
             skipped += 1
 
@@ -252,14 +253,14 @@ def server_detail(sid):
                     try:
                         r = subprocess.run(['du', '-sb', fpath], capture_output=True, text=True, timeout=10)
                         size_bytes = int(r.stdout.split()[0]) if r.returncode == 0 and r.stdout.strip() else 0
-                    except Exception:
+                    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
                         size_bytes = 0
                     size_mb = size_bytes / 1024 / 1024
                 else:
                     size_mb = st.st_size / 1024 / 1024
                 mtime = datetime.datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d %H:%M')
                 backup_files.append({'name': fname, 'size': f"{size_mb:.1f} MB", 'mtime': mtime})
-            except Exception:
+            except OSError:
                 pass
 
     from services.scheduler import get_next_run
@@ -317,7 +318,7 @@ def server_ansible_auto_add(sid):
         _generate_inventory()
         flash(f'✓ Ansible hostu "{host_name}" oluşturuldu ve bağlandı. '
               f'Gerekirse Ansible → Hostlar sayfasından düzenleyebilirsiniz.', 'success')
-    except Exception as e:
+    except (sqlite3.IntegrityError, sqlite3.OperationalError, OSError, IOError) as e:
         flash(f'Ansible host oluşturma hatası: {e}', 'danger')
 
     return redirect(url_for('servers.server_detail', sid=sid))
@@ -360,8 +361,13 @@ def server_test(sid):
     server = server_repo.get_by_id(sid)
     if not server:
         return jsonify({'ok': False, 'msg': 'Sunucu bulunamadı'})
-    ok, msg = ssh_service.ssh_test_connection(dict(server))
-    return jsonify({'ok': ok, 'msg': msg})
+    try:
+        ok, msg = ssh_service.ssh_test_connection(dict(server))
+        return jsonify({'ok': ok, 'msg': msg})
+    except ssh_service.SSHConnectionError as e:
+        return jsonify({'ok': False, 'msg': str(e)})
+    except ssh_service.SSHAuthenticationError as e:
+        return jsonify({'ok': False, 'msg': str(e)})
 
 
 @servers_bp.route('/servers/<int:sid>/install', methods=['POST'])

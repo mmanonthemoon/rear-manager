@@ -41,7 +41,7 @@ def dashboard():
             try:
                 r = subprocess.run(['du', '-sh', d], capture_output=True, text=True)
                 backup_info[s['id']] = r.stdout.split()[0]
-            except Exception:
+            except (OSError, subprocess.SubprocessError, IndexError):
                 backup_info[s['id']] = '?'
         else:
             backup_info[s['id']] = '-'

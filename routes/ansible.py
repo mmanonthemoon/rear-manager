@@ -2,6 +2,7 @@
 
 import os
 import re
+import sqlite3
 import subprocess
 import tempfile
 
@@ -163,7 +164,7 @@ def ansible_host_bulk_add():
                     'notes': notes, 'group_name': grp_name,
                 })
 
-        except Exception as e:
+        except (ValueError, IndexError, TypeError) as e:
             parse_errors.append(f"Satır {lineno}: {str(e)} → '{line}'")
             pre_skipped += 1
 
@@ -223,7 +224,7 @@ def ansible_groups():
                 try:
                     ansible_repo.create_group(name, desc)
                     flash(f'Grup "{name}" eklendi.', 'success')
-                except Exception:
+                except sqlite3.IntegrityError:
                     flash('Grup adı zaten mevcut.', 'danger')
         elif action == 'delete':
             gid = int(request.form.get('gid', 0))
@@ -287,7 +288,7 @@ def ansible_playbook_delete(pid):
         safe_name = re.sub(r'[^\w\-]', '_', pb['name']) + '.yml'
         path = os.path.join(ANSIBLE_PLAYS_DIR, safe_name)
         try: os.unlink(path)
-        except Exception: pass
+        except OSError: pass
         flash(f'Playbook "{pb["name"]}" silindi.', 'success')
     return redirect(url_for('ansible.ansible_playbooks'))
 
@@ -373,7 +374,7 @@ def ansible_run_cancel(rid):
             _append_run_log(rid, '\n[Kullanıcı tarafından durduruldu]')
             _set_run_status(rid, 'cancelled', -1)
             flash(f'Çalışma #{rid} durduruldu.', 'warning')
-        except Exception as e:
+        except OSError as e:
             flash(f'Durdurma hatası: {e}', 'danger')
     else:
         flash('Aktif süreç bulunamadı.', 'warning')
@@ -410,7 +411,7 @@ def ansible_role_add():
         role_id = ansible_repo.create_role(name, desc)
         _sync_role_to_disk(role_id)
         flash(f'Rol "{name}" oluşturuldu.', 'success')
-    except Exception as e:
+    except (sqlite3.IntegrityError, sqlite3.OperationalError, OSError) as e:
         flash(f'Hata: {e}', 'danger')
         role_id = None
 
@@ -433,7 +434,7 @@ def ansible_role_add_go():
         _sync_role_to_disk(role_id)
         flash(f'Rol "{name}" oluşturuldu.', 'success')
         return redirect(url_for('ansible.ansible_role_edit', rid=role_id))
-    except Exception as e:
+    except (sqlite3.IntegrityError, sqlite3.OperationalError, OSError) as e:
         flash(f'Hata: {e}', 'danger')
         return redirect(url_for('ansible.ansible_roles'))
 
@@ -471,7 +472,7 @@ def ansible_role_add_file(rid):
         ansible_repo.create_role_file(rid, section, filename, '---\n')
         _sync_role_to_disk(rid)
         flash(f'{section}/{filename} oluşturuldu.', 'success')
-    except Exception:
+    except sqlite3.IntegrityError:
         flash('Dosya zaten mevcut.', 'danger')
     return redirect(url_for('ansible.ansible_role_edit', rid=rid))
 
@@ -484,7 +485,7 @@ def ansible_role_delete(rid):
         import shutil
         try:
             shutil.rmtree(os.path.join(ANSIBLE_ROLES_DIR, role['name']), ignore_errors=True)
-        except Exception:
+        except OSError:
             pass
     flash('Rol silindi.', 'success')
     return redirect(url_for('ansible.ansible_roles'))
@@ -570,7 +571,7 @@ def api_ansible_ping_host():
     if _has_yaml:
         try:
             inv_str = _yaml.dump(inv_dict, default_flow_style=False, allow_unicode=True)
-        except Exception:
+        except (TypeError, ValueError):
             _has_yaml = False
 
     if not _has_yaml:
@@ -598,8 +599,8 @@ def api_ansible_ping_host():
         return jsonify({'ok': ok, 'msg': out[:800]})
     except subprocess.TimeoutExpired:
         return jsonify({'ok': False, 'msg': 'Zaman aşımı (30 saniye)'})
-    except Exception as e:
+    except (FileNotFoundError, OSError, subprocess.SubprocessError) as e:
         return jsonify({'ok': False, 'msg': str(e)})
     finally:
         try: os.unlink(tmp_inv)
-        except Exception: pass
+        except OSError: pass

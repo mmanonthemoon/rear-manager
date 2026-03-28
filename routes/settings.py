@@ -54,7 +54,7 @@ def settings_page():
             try:
                 import pytz
                 pytz.timezone(tz)
-            except Exception:
+            except (KeyError, AttributeError):
                 flash('Geçersiz timezone seçimi.', 'danger')
                 return redirect(url_for('settings.settings_page', tab='scheduler'))
             settings_repo.save_setting('scheduler_timezone', tz)
@@ -79,7 +79,7 @@ def settings_page():
         try:
             r = subprocess.run(['df', '-h', BACKUP_ROOT], capture_output=True, text=True)
             du_info = r.stdout
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
 
     offline_pkg_status = rear_service.get_offline_pkg_status()
@@ -113,8 +113,10 @@ def generate_ssh_key():
                         '-N', '', '-C', 'rear-manager'], check=True, capture_output=True)
         pub = open(f"{key_path}.pub").read().strip()
         flash(f'SSH anahtarı oluşturuldu. Public key: {pub[:60]}...', 'success')
-    except Exception as e:
-        flash(f'Hata: {str(e)}', 'danger')
+    except subprocess.CalledProcessError as e:
+        flash(f'SSH key oluşturma başarısız: {str(e)}', 'danger')
+    except (OSError, IOError) as e:
+        flash(f'Anahtar dosyası hatası: {str(e)}', 'danger')
     return redirect(url_for('settings.settings_page'))
 
 
@@ -137,7 +139,9 @@ def copy_ssh_key(sid):
         if ec == 0:
             return jsonify({'ok': True, 'msg': 'Public key kopyalandı.'})
         return jsonify({'ok': False, 'msg': out})
-    except Exception as e:
+    except (ssh_service.SSHConnectionError, ssh_service.SSHAuthenticationError) as e:
+        return jsonify({'ok': False, 'msg': str(e)})
+    except (OSError, IOError) as e:
         return jsonify({'ok': False, 'msg': str(e)})
 
 
