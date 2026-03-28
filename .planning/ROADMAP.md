@@ -62,7 +62,7 @@ Plans:
   2. ReaR install and configuration flows have integration tests that verify the correct SSH commands are issued in the correct order
   3. Ansible host registration, inventory generation, and playbook execution flows have test coverage that catches regressions
   4. Running the test suite from the project root produces a pass/fail result with no manual setup required
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 03-01-PLAN.md — Shared test fixtures + SSH service unit tests (TEST-01)
@@ -88,5 +88,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Bug Fixes | 2/2 | Complete   | 2026-03-17 |
 | 2. Refactoring | 4/6 | In Progress|  |
-| 3. Testing | 0/3 | Not started | - |
+| 3. Testing | 1/3 | In Progress|  |
 | 4. Features | 0/TBD | Not started | - |

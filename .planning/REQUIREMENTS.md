@@ -22,7 +22,7 @@
 
 ### Testing
 
-- [ ] **TEST-01**: SSH bağlantısı ve komut çalıştırma servisleri için birim testleri yazılmalı
+- [x] **TEST-01**: SSH bağlantısı ve komut çalıştırma servisleri için birim testleri yazılmalı
 - [ ] **TEST-02**: ReaR kurulum ve yapılandırma akışları için entegrasyon testleri yazılmalı
 - [ ] **TEST-03**: Ansible host/playbook çalıştırma akışları için test coverage eklenmeli
 
@@ -77,7 +77,7 @@
 | REF-01 | Phase 2 | Complete |
 | REF-02 | Phase 2 | Complete |
 | REF-03 | Phase 2 | Complete |
-| TEST-01 | Phase 3 | Pending |
+| TEST-01 | Phase 3 | Complete |
 | TEST-02 | Phase 3 | Pending |
 | TEST-03 | Phase 3 | Pending |
 | FEAT-01 | Phase 4 | Pending |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-refactoring 02-06-PLAN.md
-last_updated: "2026-03-28T20:12:46.808Z"
+stopped_at: Completed 03-testing 03-01-PLAN.md
+last_updated: "2026-03-28T20:50:04.152Z"
 last_activity: 2026-03-17 — Roadmap created
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 11
+  completed_plans: 9
   percent: 0
 ---
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-refactoring P04 | 10 | 2 tasks | 5 files |
 | Phase 02-refactoring P05 | 10 | 2 tasks | 35 files |
 | Phase 02-refactoring P06 | 9 | 2 tasks | 10 files |
+| Phase 03-testing P01 | 2 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 02-refactoring]: SCHEDULER_TIMEZONES re-exported from app.py to maintain test compatibility (test_bug03_scheduler accesses app.SCHEDULER_TIMEZONES)
 - [Phase 02-refactoring]: Background thread broad-catch-ok via start_job_thread wrapper; rear.py functions documented as protected by outer wrapper
 - [Phase 02-refactoring]: sqlite3.IntegrityError/OperationalError for DB constraint violations in routes; not generic sqlite3.Error
+- [Phase 03-testing]: Patch target is patch.object(ssh_module, 'build_ssh_client') — intercepts all SSH client construction without real server
+- [Phase 03-testing]: app_context fixture (not app_with_db) used for SSH service tests — need Flask context for current_app.logger but no DB access
 
 ### Pending Todos
 
@@ -94,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T20:08:02.377Z
-Stopped at: Completed 02-refactoring 02-06-PLAN.md
+Last session: 2026-03-28T20:50:04.148Z
+Stopped at: Completed 03-testing 03-01-PLAN.md
 Resume file: None
