@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-refactoring 02-05-PLAN.md
-last_updated: "2026-03-28T19:56:16.217Z"
+stopped_at: Completed 02-refactoring 02-06-PLAN.md
+last_updated: "2026-03-28T20:08:02.381Z"
 last_activity: 2026-03-17 — Roadmap created
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-refactoring P03 | 9 | 2 tasks | 5 files |
 | Phase 02-refactoring P04 | 10 | 2 tasks | 5 files |
 | Phase 02-refactoring P05 | 10 | 2 tasks | 35 files |
+| Phase 02-refactoring P06 | 9 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 02-refactoring]: start_ansible_run() wraps _do_ansible_run with Flask app context; get_running_proc() accessor replaces direct dict access in cancel route
 - [Phase 02-refactoring]: utils.py extracts cron_describe/safe_dirname/calc_duration from app.py — keeps factory under 120 lines
 - [Phase 02-refactoring]: SCHEDULER_TIMEZONES re-exported from app.py to maintain test compatibility (test_bug03_scheduler accesses app.SCHEDULER_TIMEZONES)
+- [Phase 02-refactoring]: Background thread broad-catch-ok via start_job_thread wrapper; rear.py functions documented as protected by outer wrapper
+- [Phase 02-refactoring]: sqlite3.IntegrityError/OperationalError for DB constraint violations in routes; not generic sqlite3.Error
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T19:56:16.213Z
-Stopped at: Completed 02-refactoring 02-05-PLAN.md
+Last session: 2026-03-28T20:08:02.377Z
+Stopped at: Completed 02-refactoring 02-06-PLAN.md
 Resume file: None
