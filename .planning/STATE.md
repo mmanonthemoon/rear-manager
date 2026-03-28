@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-refactoring 02-04-PLAN.md
-last_updated: "2026-03-25T21:21:46.024Z"
+stopped_at: Completed 02-refactoring 02-05-PLAN.md
+last_updated: "2026-03-28T19:56:16.217Z"
 last_activity: 2026-03-17 — Roadmap created
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -56,6 +56,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-refactoring P02 | multi-session | 2 tasks | 8 files |
 | Phase 02-refactoring P03 | 9 | 2 tasks | 5 files |
 | Phase 02-refactoring P04 | 10 | 2 tasks | 5 files |
+| Phase 02-refactoring P05 | 10 | 2 tasks | 35 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 02-refactoring]: start_job_thread pushes Flask app context via app.app_context() wrapper so background threads can use current_app.logger
 - [Phase 02-refactoring]: login_required and admin_required placed in services/auth.py to avoid circular imports when route modules import them
 - [Phase 02-refactoring]: start_ansible_run() wraps _do_ansible_run with Flask app context; get_running_proc() accessor replaces direct dict access in cancel route
+- [Phase 02-refactoring]: utils.py extracts cron_describe/safe_dirname/calc_duration from app.py — keeps factory under 120 lines
+- [Phase 02-refactoring]: SCHEDULER_TIMEZONES re-exported from app.py to maintain test compatibility (test_bug03_scheduler accesses app.SCHEDULER_TIMEZONES)
 
 ### Pending Todos
 
@@ -88,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T21:21:46.020Z
-Stopped at: Completed 02-refactoring 02-04-PLAN.md
+Last session: 2026-03-28T19:56:16.213Z
+Stopped at: Completed 02-refactoring 02-05-PLAN.md
 Resume file: None
