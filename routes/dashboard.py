@@ -9,17 +9,10 @@ from services.auth import login_required
 from services.jobs import get_running_count
 from models import servers as server_repo, jobs as job_repo, schedules as schedule_repo
 from config import BACKUP_ROOT
+from utils import safe_dirname as _safe_dirname
 
 
 dashboard_bp = Blueprint('dashboard', __name__)
-
-
-def _safe_dirname(hostname):
-    import re
-    safe = re.sub(r'[^a-zA-Z0-9_-]', lambda m: '-' if m.group() == '.' else '', hostname)
-    safe = re.sub(r'-{2,}', '-', safe)
-    safe = safe.strip('-')
-    return safe or hostname
 
 
 @dashboard_bp.route('/')

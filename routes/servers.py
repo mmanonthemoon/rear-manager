@@ -17,17 +17,10 @@ from models import jobs as job_repo
 from models import settings as settings_repo
 from models import ansible as ansible_repo
 from config import BACKUP_ROOT
+from utils import safe_dirname as _safe_dirname
 
 
 servers_bp = Blueprint('servers', __name__)
-
-
-def _safe_dirname(hostname):
-    import re
-    safe = re.sub(r'[^a-zA-Z0-9_-]', lambda m: '-' if m.group() == '.' else '', hostname)
-    safe = re.sub(r'-{2,}', '-', safe)
-    safe = safe.strip('-')
-    return safe or hostname
 
 
 def _get_settings():
