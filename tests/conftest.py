@@ -54,3 +54,39 @@ def app_client():
         db_module.DB_PATH = old_db_path
     os.close(db_fd)
     os.unlink(db_path)
+
+
+@pytest.fixture
+def server_dict():
+    """Minimal server dict for SSH/ReaR service tests."""
+    return {
+        'id': 1,
+        'label': 'test-server',
+        'hostname': 'test.local',
+        'ip_address': '127.0.0.1',
+        'ssh_port': '22',
+        'ssh_user': 'testuser',
+        'ssh_auth': 'password',
+        'ssh_password': 'ssh_pass',
+        'become_method': 'sudo',
+        'become_password': 'become_pass',
+        'become_same_pass': '0',
+        'become_user': 'root',
+        'exclude_dirs': '',
+    }
+
+
+@pytest.fixture
+def app_context():
+    """Push Flask app context for service-layer tests that use current_app.logger."""
+    import app as app_module
+    with app_module.app.app_context():
+        yield
+
+
+@pytest.fixture
+def app_with_db(app_client):
+    """Provides app context + initialized DB for service-layer tests needing DB access."""
+    import app as app_module
+    with app_module.app.app_context():
+        yield app_client
