@@ -122,8 +122,8 @@ def authenticate_ad(username, password):
 
     except LDAPException as e:
         return False, None, None, f'LDAP bağlantı hatası: {str(e)}'
-    except Exception as e:
-        return False, None, None, f'Hata: {str(e)}'
+    except (ConnectionError, OSError, TimeoutError) as e:
+        return False, None, None, f'AD sunucu bağlantı hatası: {str(e)}'
 
 
 # ─────────────────────────────────────────────────────────────

@@ -65,8 +65,8 @@ def get_offline_pkg_status():
             try:
                 with open(meta_path) as mf:
                     meta = _json.load(mf)
-            except Exception:
-                pass
+            except (OSError, IOError, ValueError):
+                pass  # meta.json corrupt or unreadable — skip
 
         result[codename] = {
             'ready':  True,
@@ -95,7 +95,10 @@ def get_ubuntu_codename_via_ssh(server):
         codename = out[0].strip().lower() if out else None
         version  = out[1].strip() if len(out) > 1 else None
         return codename, version
-    except Exception:
+    except (ssh_service.SSHConnectionError, ssh_service.SSHAuthenticationError):
+        return None, None
+    except (OSError, UnicodeDecodeError) as e:
+        current_app.logger.warning("get_ubuntu_codename_via_ssh error: %s", e)
         return None, None
 
 
@@ -149,7 +152,7 @@ def ssh_install_offline_ubuntu(server_dict, job_id):
                 tar.add(os.path.join(pkg_dir, deb), arcname=deb)
         tar_size_mb = os.path.getsize(tmp_tar) / 1024 / 1024
         log(f"► Arşiv boyutu: {tar_size_mb:.1f} MB")
-    except Exception as e:
+    except (OSError, IOError, tarfile.TarError) as e:
         return False, f"Arşivleme hatası: {e}"
 
     # ── Hedef sunucuya gönder ───────────────────────────────
@@ -176,16 +179,16 @@ def ssh_install_offline_ubuntu(server_dict, job_id):
         sftp.close()
         client.close()
         log("► Kopyalama tamamlandı ✓")
-    except Exception as e:
+    except (ssh_service.SSHConnectionError, ssh_service.SSHAuthenticationError, OSError, IOError) as e:
         try:
             os.unlink(tmp_tar)
-        except Exception:
+        except OSError:
             pass
         return False, f"SFTP gönderme hatası: {e}"
     finally:
         try:
             os.unlink(tmp_tar)
-        except Exception:
+        except OSError:
             pass
 
     # ── Hedefte: aç + kur + temizle ────────────────────────
@@ -321,9 +324,15 @@ def generate_rear_config(server, cfg, extra_server_exclude=''):
 
 # ─────────────────────────────────────────────────────────────
 # ARKA PLAN İŞ FONKSİYONLARI (background thread functions)
+# These functions run inside start_job_thread() which provides a
+# broad-catch-ok wrapper at the top level.
 # ─────────────────────────────────────────────────────────────
 def _run_install_rear(job_id, server_dict):
-    """Install ReaR on a remote server (background thread function)."""
+    """Install ReaR on a remote server (background thread function).
+
+    Called via start_job_thread() — unhandled exceptions are caught by that
+    wrapper.  # broad-catch-ok: outer wrapper in jobs.start_job_thread
+    """
     log = lambda t: job_service._append_log(job_id, t)
     job_service._set_job_status(job_id, 'running')
     job_repo.set_started(job_id)
@@ -478,7 +487,11 @@ def _run_install_rear(job_id, server_dict):
 
 
 def _run_configure_rear(job_id, server_dict, rear_config_content):
-    """Configure ReaR on a remote server (background thread function)."""
+    """Configure ReaR on a remote server (background thread function).
+
+    Called via start_job_thread() — unhandled exceptions are caught by that
+    wrapper.  # broad-catch-ok: outer wrapper in jobs.start_job_thread
+    """
     log = lambda t: job_service._append_log(job_id, t)
     job_service._set_job_status(job_id, 'running')
     job_repo.set_started(job_id)
@@ -524,7 +537,7 @@ def _get_local_ip():
         for ip in ips:
             if not ip.startswith('127.') and not ip.startswith('::1'):
                 return ip
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
     try:
         hostname = socket.gethostname()
@@ -533,6 +546,6 @@ def _get_local_ip():
             ip = info[4][0]
             if not ip.startswith('127.'):
                 return ip
-    except Exception:
+    except (OSError, socket.gaierror):
         pass
     return '127.0.0.1'

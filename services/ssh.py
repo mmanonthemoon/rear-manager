@@ -271,7 +271,7 @@ def ssh_exec_stream(server, command, log_cb):
 
     except (SSHConnectionError, SSHAuthenticationError):
         raise
-    except Exception as e:
+    except (paramiko.SSHException, socket.timeout, OSError) as e:
         msg = f"[SSH HATA] {str(e)}"
         output_lines.append(msg)
         log_cb(msg)
@@ -343,7 +343,7 @@ def ssh_test_connection(server):
 
     except (SSHConnectionError, SSHAuthenticationError) as e:
         return False, str(e)
-    except Exception as e:
+    except (paramiko.SSHException, socket.timeout, OSError, ValueError) as e:
         return False, str(e)
 
 
@@ -362,7 +362,8 @@ def ssh_get_os_info(server):
         return out
     except (SSHConnectionError, SSHAuthenticationError):
         raise
-    except Exception:
+    except (paramiko.SSHException, socket.timeout, OSError) as e:
+        current_app.logger.warning("ssh_get_os_info error for %s: %s", server.get('hostname', '?'), e)
         return ''
 
 
@@ -414,5 +415,5 @@ def ssh_upload_file(server, content, remote_path):
 
     except (SSHConnectionError, SSHAuthenticationError) as e:
         return False, str(e)
-    except Exception as e:
+    except (paramiko.SSHException, socket.timeout, OSError, IOError) as e:
         return False, str(e)

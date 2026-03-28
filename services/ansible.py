@@ -62,7 +62,7 @@ def _ansible_check() -> bool:
         r = subprocess.run(['ansible', '--version'],
                            capture_output=True, text=True, timeout=5)
         return r.returncode == 0
-    except Exception:
+    except (FileNotFoundError, subprocess.SubprocessError, OSError):
         return False
 
 
@@ -71,7 +71,7 @@ def _ansible_version() -> str:
         r = subprocess.run(['ansible', '--version'],
                            capture_output=True, text=True, timeout=5)
         return r.stdout.split('\n')[0].strip()
-    except Exception:
+    except (FileNotFoundError, subprocess.SubprocessError, OSError):
         return 'Kurulu değil'
 
 
@@ -168,7 +168,7 @@ def _generate_inventory() -> str:
             try:
                 with open(gv_path, 'w') as f:
                     f.write(f"---\n{g['vars_yaml']}\n")
-            except Exception:
+            except (OSError, IOError):
                 pass
 
     # ── host_vars dosyaları (ek özel değişkenler) ───────────────
@@ -178,7 +178,7 @@ def _generate_inventory() -> str:
             try:
                 with open(hv_path, 'w') as f:
                     f.write(f"---\n{h['vars_yaml']}\n")
-            except Exception:
+            except (OSError, IOError):
                 pass
 
     # ── YAML'a dönüştür ─────────────────────────────────────────
@@ -279,8 +279,9 @@ def _do_ansible_run(run_id, playbook_path, extra_args: list):
     try:
         _generate_inventory()
         log("► Inventory hazır ✓")
-    except Exception as e:
-        log(f"[HATA] Inventory üretme hatası: {e}")
+    except Exception:  # broad-catch-ok: background thread must not crash
+        current_app.logger.error("Inventory generation failed for run %d:\n%s", run_id, traceback.format_exc())
+        log(f"[HATA] Inventory üretme hatası — ayrıntılar için uygulama loguna bakın")
         _set_run_status(run_id, 'failed', -1)
         return
 
@@ -327,7 +328,8 @@ def _do_ansible_run(run_id, playbook_path, extra_args: list):
         proc.wait()
         exit_code = proc.returncode
 
-    except Exception as e:
+    except (FileNotFoundError, OSError, subprocess.SubprocessError) as e:
+        current_app.logger.error("ansible-playbook launch failed for run %d: %s", run_id, e)
         log(f"[HATA] {e}")
         exit_code = -1
     finally:

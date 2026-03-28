@@ -105,7 +105,7 @@ def _do_backup(job_id, server_dict, backup_cmd='mkbackup', triggered_by='manual'
             try:
                 r = subprocess.run(['du', '-sh', backup_dir], capture_output=True, text=True)
                 size_str = r.stdout.split()[0]
-            except Exception:
+            except (OSError, subprocess.SubprocessError, IndexError):
                 pass
         log(f"► Yedek boyutu: {size_str}")
         log("=== Tamamlandı ✓ ===")
@@ -136,7 +136,7 @@ def _get_local_ip():
         for ip in ips:
             if not ip.startswith('127.') and not ip.startswith('::1'):
                 return ip
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
     try:
         hostname = socket.gethostname()
@@ -145,7 +145,7 @@ def _get_local_ip():
             ip = info[4][0]
             if not ip.startswith('127.'):
                 return ip
-    except Exception:
+    except (OSError, socket.gaierror):
         pass
     return '127.0.0.1'
 
@@ -165,7 +165,7 @@ def start_job_thread(target_fn, job_id, *args):
         with app.app_context():
             try:
                 target_fn(job_id, *args)
-            except Exception:
+            except Exception:  # broad-catch-ok: background thread must not crash
                 err = traceback.format_exc()
                 _append_log(job_id, f"[BEKLENMEYEN HATA]\n{err}")
                 _set_job_status(job_id, 'failed')

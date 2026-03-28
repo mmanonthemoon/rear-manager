@@ -115,10 +115,10 @@ def _add_scheduler_job(schedule_id, minute, hour, dom, month, dow):
             replace_existing=True,
             misfire_grace_time=300
         )
-    except Exception as e:
+    except (ValueError, KeyError) as e:
         try:
             from flask import current_app
-            current_app.logger.error(f"Zamanlayıcı eklenemedi (sched {schedule_id}): {e}")
+            current_app.logger.error("Zamanlayıcı eklenemedi (sched %d): %s", schedule_id, e)
         except RuntimeError:
             pass  # No app context for logging
 
@@ -139,7 +139,7 @@ def get_next_run(schedule_id):
         job = _scheduler.get_job(f'sched_{schedule_id}')
         if job and job.next_run_time:
             return job.next_run_time.strftime('%Y-%m-%d %H:%M:%S')
-    except Exception:
+    except (JobLookupError, AttributeError):
         pass
     return None
 
@@ -150,5 +150,5 @@ def get_all_jobs():
         return []
     try:
         return _scheduler.get_jobs()
-    except Exception:
+    except (RuntimeError, AttributeError):
         return []
