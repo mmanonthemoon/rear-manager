@@ -2,13 +2,13 @@
 {% block title %}Yapılandırma - {{ server.label }}{% endblock %}
 {% block topbar_title %}⚙️ ReaR Yapılandırma — {{ server.label }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('server_detail', sid=server.id) }}" class="btn btn-secondary btn-sm">← Geri</a>
+  <a href="{{ url_for('servers.server_detail', sid=server.id) }}" class="btn btn-secondary btn-sm">← Geri</a>
 {% endblock %}
 
 {% block content %}
 <div class="breadcrumb">
-  <a href="{{ url_for('servers_list') }}">Sunucular</a><span>›</span>
-  <a href="{{ url_for('server_detail', sid=server.id) }}">{{ server.label }}</a><span>›</span>
+  <a href="{{ url_for('servers.servers_list') }}">Sunucular</a><span>›</span>
+  <a href="{{ url_for('servers.server_detail', sid=server.id) }}">{{ server.label }}</a><span>›</span>
   <span>Yapılandırma</span>
 </div>
 
@@ -84,7 +84,7 @@
 
         <div class="btn-group">
           <button type="submit" class="btn btn-primary">⚙️ Yapılandırmayı Uygula</button>
-          <a href="{{ url_for('server_detail', sid=server.id) }}" class="btn btn-secondary">İptal</a>
+          <a href="{{ url_for('servers.server_detail', sid=server.id) }}" class="btn btn-secondary">İptal</a>
         </div>
       </form>
     </div>

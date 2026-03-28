@@ -2,7 +2,7 @@
 {% block title %}{{ title }}{% endblock %}
 {% block topbar_title %}{{ title }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('servers_list') }}" class="btn btn-secondary btn-sm">← Geri</a>
+  <a href="{{ url_for('servers.servers_list') }}" class="btn btn-secondary btn-sm">← Geri</a>
 {% endblock %}
 
 {% block content %}
@@ -166,7 +166,7 @@
           placeholder="/home/user/.cache/*&#10;/var/lib/docker/*">{{ server.exclude_dirs if server else '' }}</textarea>
         <div class="form-help">
           Her satıra bir yol. Global hariç dizinler
-          (<a href="{{ url_for('settings_page') }}" class="link">Ayarlar</a>'dan) de config'e eklenir.
+          (<a href="{{ url_for('settings.settings_page') }}" class="link">Ayarlar</a>'dan) de config'e eklenir.
         </div>
       </div>
 
@@ -180,9 +180,9 @@
         <button type="submit" class="btn btn-primary">
           {% if server %}💾 Güncelle{% else %}➕ Ekle{% endif %}
         </button>
-        <a href="{{ url_for('servers_list') }}" class="btn btn-secondary">İptal</a>
+        <a href="{{ url_for('servers.servers_list') }}" class="btn btn-secondary">İptal</a>
         {% if not server %}
-        <a href="{{ url_for('server_bulk_add') }}" class="btn btn-teal">📋 Toplu Ekle</a>
+        <a href="{{ url_for('servers.server_bulk_add') }}" class="btn btn-teal">📋 Toplu Ekle</a>
         {% endif %}
       </div>
 

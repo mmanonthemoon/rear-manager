@@ -2,7 +2,7 @@
 {% block title %}Ansible Gruplar{% endblock %}
 {% block topbar_title %}📁 Ansible Gruplar{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
+  <a href="{{ url_for('ansible.ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
 {% endblock %}
 {% block content %}
 <div class="grid-2">
@@ -25,7 +25,7 @@
               class="btn btn-outline btn-sm">Vars</button>
             <button onclick="openConfirm('Grup Sil','{{ g.name }} ve host atamaları silinecek!','dg-{{ g.id }}')"
               class="btn btn-danger btn-sm">Sil</button>
-            <form id="dg-{{ g.id }}" action="{{ url_for('ansible_groups') }}" method="post" style="display:none">
+            <form id="dg-{{ g.id }}" action="{{ url_for('ansible.ansible_groups') }}" method="post" style="display:none">
               <input type="hidden" name="action" value="delete">
               <input type="hidden" name="gid" value="{{ g.id }}">
             </form>

@@ -2,8 +2,8 @@
 {% block title %}Playbooklar{% endblock %}
 {% block topbar_title %}📋 Ansible Playbooklar{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_playbook_add') }}" class="btn btn-primary btn-sm">➕ Yeni Playbook</a>
-  <a href="{{ url_for('ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
+  <a href="{{ url_for('ansible.ansible_playbook_add') }}" class="btn btn-primary btn-sm">➕ Yeni Playbook</a>
+  <a href="{{ url_for('ansible.ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
 {% endblock %}
 {% block content %}
 <div class="card">
@@ -22,7 +22,7 @@
         {% set lr = last_runs.get(pb.id) %}
         <tr>
           <td>
-            <a href="{{ url_for('ansible_playbook_edit', pid=pb.id) }}" class="link fw-bold">{{ pb.name }}</a>
+            <a href="{{ url_for('ansible.ansible_playbook_edit', pid=pb.id) }}" class="link fw-bold">{{ pb.name }}</a>
             <div class="text-muted" style="font-size:10px">{{ pb.updated_at[:16] }}</div>
           </td>
           <td class="text-muted" style="font-size:12px">{{ pb.description or '—' }}</td>
@@ -46,13 +46,13 @@
           </td>
           <td class="td-nowrap">
             <div class="btn-group">
-              <a href="{{ url_for('ansible_playbook_run', pid=pb.id) }}"
+              <a href="{{ url_for('ansible.ansible_playbook_run', pid=pb.id) }}"
                  class="btn btn-success btn-sm">▶ Çalıştır</a>
-              <a href="{{ url_for('ansible_playbook_edit', pid=pb.id) }}"
+              <a href="{{ url_for('ansible.ansible_playbook_edit', pid=pb.id) }}"
                  class="btn btn-secondary btn-sm">Düzenle</a>
               <button onclick="openConfirm('Playbook Sil','{{ pb.name }} silinecek!','dp-{{ pb.id }}')"
                 class="btn btn-danger btn-sm">Sil</button>
-              <form id="dp-{{ pb.id }}" action="{{ url_for('ansible_playbook_delete', pid=pb.id) }}"
+              <form id="dp-{{ pb.id }}" action="{{ url_for('ansible.ansible_playbook_delete', pid=pb.id) }}"
                 method="post" style="display:none"></form>
             </div>
           </td>
@@ -64,7 +64,7 @@
     <div class="empty-state">
       <div class="empty-icon">📋</div>
       <p>Henüz playbook yok.</p>
-      <a href="{{ url_for('ansible_playbook_add') }}" class="btn btn-primary">➕ İlk Playbook'u Oluştur</a>
+      <a href="{{ url_for('ansible.ansible_playbook_add') }}" class="btn btn-primary">➕ İlk Playbook'u Oluştur</a>
     </div>
     {% endif %}
   </div>

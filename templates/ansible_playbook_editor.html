@@ -3,9 +3,9 @@
 {% block topbar_title %}{{ title }}{% endblock %}
 {% block topbar_actions %}
   {% if pb %}
-  <a href="{{ url_for('ansible_playbook_run', pid=pb.id) }}" class="btn btn-success btn-sm">▶ Çalıştır</a>
+  <a href="{{ url_for('ansible.ansible_playbook_run', pid=pb.id) }}" class="btn btn-success btn-sm">▶ Çalıştır</a>
   {% endif %}
-  <a href="{{ url_for('ansible_playbooks') }}" class="btn btn-secondary btn-sm">← Playbooklar</a>
+  <a href="{{ url_for('ansible.ansible_playbooks') }}" class="btn btn-secondary btn-sm">← Playbooklar</a>
 {% endblock %}
 
 {% block content %}
@@ -88,7 +88,7 @@
         💾 Kaydet
       </button>
       {% if pb %}
-      <a href="{{ url_for('ansible_playbook_run', pid=pb.id) }}"
+      <a href="{{ url_for('ansible.ansible_playbook_run', pid=pb.id) }}"
          class="btn btn-success" style="width:100%;margin-top:8px;display:block;text-align:center">
         ▶ Çalıştır
       </a>
@@ -121,7 +121,7 @@
   <div class="card-body">
     <button onclick="openConfirm('Playbook Sil','{{ pb.name }} kalıcı olarak silinecek!','dpb-{{ pb.id }}')"
       class="btn btn-danger" style="width:100%">🗑 Playbook'u Sil</button>
-    <form id="dpb-{{ pb.id }}" action="{{ url_for('ansible_playbook_delete', pid=pb.id) }}"
+    <form id="dpb-{{ pb.id }}" action="{{ url_for('ansible.ansible_playbook_delete', pid=pb.id) }}"
       method="post" style="display:none"></form>
   </div>
 </div>

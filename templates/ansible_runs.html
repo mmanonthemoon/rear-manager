@@ -2,8 +2,8 @@
 {% block title %}Ansible — Çalışma Geçmişi{% endblock %}
 {% block topbar_title %}📋 Ansible Çalışma Geçmişi{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
-  <a href="{{ url_for('ansible_playbooks') }}" class="btn btn-primary btn-sm">▶ Playbooklar</a>
+  <a href="{{ url_for('ansible.ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
+  <a href="{{ url_for('ansible.ansible_playbooks') }}" class="btn btn-primary btn-sm">▶ Playbooklar</a>
 {% endblock %}
 
 {% block content %}
@@ -33,7 +33,7 @@
         <tr>
           <td class="font-mono text-muted" style="font-size:11px">{{ r.id }}</td>
           <td>
-            <a href="{{ url_for('ansible_run_detail', rid=r.id) }}" class="link fw-bold">
+            <a href="{{ url_for('ansible.ansible_run_detail', rid=r.id) }}" class="link fw-bold">
               {{ r.playbook_name or r.pb_file or '?' }}
             </a>
           </td>
@@ -72,10 +72,10 @@
           </td>
           <td class="td-nowrap">
             <div class="btn-group">
-              <a href="{{ url_for('ansible_run_detail', rid=r.id) }}"
+              <a href="{{ url_for('ansible.ansible_run_detail', rid=r.id) }}"
                  class="btn btn-outline btn-sm">Log</a>
               {% if r.status == 'running' %}
-              <form action="{{ url_for('ansible_run_cancel', rid=r.id) }}" method="post"
+              <form action="{{ url_for('ansible.ansible_run_cancel', rid=r.id) }}" method="post"
                     style="display:inline">
                 <button class="btn btn-warning btn-sm">⊘ Durdur</button>
               </form>
@@ -85,7 +85,7 @@
                 'del-run-{{ r.id }}')"
                 class="btn btn-danger btn-sm">Sil</button>
               <form id="del-run-{{ r.id }}"
-                action="{{ url_for('ansible_run_delete', rid=r.id) }}"
+                action="{{ url_for('ansible.ansible_run_delete', rid=r.id) }}"
                 method="post" style="display:none"></form>
             </div>
           </td>
@@ -97,7 +97,7 @@
     <div class="empty-state">
       <div class="empty-icon">📋</div>
       <p>Henüz çalışma kaydı yok.</p>
-      <a href="{{ url_for('ansible_playbooks') }}" class="btn btn-primary btn-sm">
+      <a href="{{ url_for('ansible.ansible_playbooks') }}" class="btn btn-primary btn-sm">
         Playbook Çalıştır
       </a>
     </div>

@@ -2,7 +2,7 @@
 {% block title %}Ansible — Roller{% endblock %}
 {% block topbar_title %}🎭 Ansible Rolleri{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
+  <a href="{{ url_for('ansible.ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
 {% endblock %}
 
 {% block content %}
@@ -25,7 +25,7 @@
         {% for r in roles %}
         <tr>
           <td>
-            <a href="{{ url_for('ansible_role_edit', rid=r.id) }}" class="link fw-bold">
+            <a href="{{ url_for('ansible.ansible_role_edit', rid=r.id) }}" class="link fw-bold">
               {{ r.name }}
             </a>
           </td>
@@ -38,14 +38,14 @@
           </td>
           <td class="td-nowrap">
             <div class="btn-group">
-              <a href="{{ url_for('ansible_role_edit', rid=r.id) }}"
+              <a href="{{ url_for('ansible.ansible_role_edit', rid=r.id) }}"
                  class="btn btn-outline btn-sm">Düzenle</a>
               <button onclick="openConfirm('Rolü Sil',
                 '{{ r.name }} rolü ve tüm dosyaları silinecek!',
                 'del-role-{{ r.id }}')"
                 class="btn btn-danger btn-sm">Sil</button>
               <form id="del-role-{{ r.id }}"
-                action="{{ url_for('ansible_role_delete', rid=r.id) }}"
+                action="{{ url_for('ansible.ansible_role_delete', rid=r.id) }}"
                 method="post" style="display:none"></form>
             </div>
           </td>
@@ -98,7 +98,7 @@
 <div class="card">
   <div class="card-header">➕ Yeni Rol Oluştur</div>
   <div class="card-body">
-    <form method="post" action="{{ url_for('ansible_role_add_go') }}">
+    <form method="post" action="{{ url_for('ansible.ansible_role_add_go') }}">
       <div class="form-group">
         <label>Rol Adı <span class="req">*</span></label>
         <input type="text" name="name" class="form-control"

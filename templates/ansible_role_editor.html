@@ -2,7 +2,7 @@
 {% block title %}Rol: {{ role.name }}{% endblock %}
 {% block topbar_title %}🎭 Rol Editörü — {{ role.name }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_roles') }}" class="btn btn-secondary btn-sm">← Geri</a>
+  <a href="{{ url_for('ansible.ansible_roles') }}" class="btn btn-secondary btn-sm">← Geri</a>
   <button onclick="saveAll()" class="btn btn-success btn-sm" id="saveAllBtn">💾 Tümünü Kaydet</button>
 {% endblock %}
 
@@ -95,7 +95,7 @@
     {% if sec in ['tasks','handlers','vars','defaults','templates','files'] %}
     <div class="card" style="border:1px dashed #30363d;background:transparent">
       <div class="card-body" style="padding:12px">
-        <form method="post" action="{{ url_for('ansible_role_add_file', rid=role.id) }}"
+        <form method="post" action="{{ url_for('ansible.ansible_role_add_file', rid=role.id) }}"
               style="display:flex;gap:8px;align-items:center">
           <input type="hidden" name="section" value="{{ sec }}">
           <input type="text" name="filename" class="form-control" style="flex:1"

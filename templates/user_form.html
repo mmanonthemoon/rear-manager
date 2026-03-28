@@ -2,7 +2,7 @@
 {% block title %}{{ title }}{% endblock %}
 {% block topbar_title %}{{ title }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('users_list') }}" class="btn btn-secondary btn-sm">← Geri</a>
+  <a href="{{ url_for('users.users_list') }}" class="btn btn-secondary btn-sm">← Geri</a>
 {% endblock %}
 
 {% block content %}
@@ -86,7 +86,7 @@
         <button type="submit" class="btn btn-primary">
           {% if user %}💾 Güncelle{% else %}➕ Kullanıcı Ekle{% endif %}
         </button>
-        <a href="{{ url_for('users_list') }}" class="btn btn-secondary">İptal</a>
+        <a href="{{ url_for('users.users_list') }}" class="btn btn-secondary">İptal</a>
       </div>
     </form>
   </div>

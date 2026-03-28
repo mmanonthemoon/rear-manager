@@ -36,7 +36,7 @@
         </select>
       </div>
       <button type="submit" class="btn btn-primary btn-sm">Filtrele</button>
-      <a href="{{ url_for('jobs_list') }}" class="btn btn-secondary btn-sm">Temizle</a>
+      <a href="{{ url_for('jobs.jobs_list') }}" class="btn btn-secondary btn-sm">Temizle</a>
     </form>
   </div>
 </div>
@@ -55,9 +55,9 @@
       <tbody>
         {% for j in jobs %}
         <tr>
-          <td><a href="{{ url_for('job_detail', jid=j.id) }}" class="link">#{{ j.id }}</a></td>
+          <td><a href="{{ url_for('jobs.job_detail', jid=j.id) }}" class="link">#{{ j.id }}</a></td>
           <td>
-            <a href="{{ url_for('server_detail', sid=j.server_id) }}" class="link" style="font-size:12px">{{ j.server_label }}</a>
+            <a href="{{ url_for('servers.server_detail', sid=j.server_id) }}" class="link" style="font-size:12px">{{ j.server_label }}</a>
             <div class="font-mono text-muted" style="font-size:10px">{{ j.hostname }}</div>
           </td>
           <td>
@@ -87,10 +87,10 @@
           <td class="font-mono text-muted" style="font-size:12px">{{ j.backup_size or '-' }}</td>
           <td class="td-nowrap">
             <div class="btn-group">
-              <a href="{{ url_for('job_detail', jid=j.id) }}" class="btn btn-outline btn-sm">Log</a>
+              <a href="{{ url_for('jobs.job_detail', jid=j.id) }}" class="btn btn-outline btn-sm">Log</a>
               <button onclick="openConfirm('Sil','#{{ j.id }} silinecek.','del-j-{{ j.id }}')"
                 class="btn btn-danger btn-sm">✕</button>
-              <form id="del-j-{{ j.id }}" action="{{ url_for('job_delete', jid=j.id) }}" method="post" style="display:none"></form>
+              <form id="del-j-{{ j.id }}" action="{{ url_for('jobs.job_delete', jid=j.id) }}" method="post" style="display:none"></form>
             </div>
           </td>
         </tr>

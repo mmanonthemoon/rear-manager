@@ -2,7 +2,7 @@
 {% block title %}{{ title }}{% endblock %}
 {% block topbar_title %}{{ title }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_hosts') }}" class="btn btn-secondary btn-sm">← Hostlar</a>
+  <a href="{{ url_for('ansible.ansible_hosts') }}" class="btn btn-secondary btn-sm">← Hostlar</a>
 {% endblock %}
 
 {% block content %}
@@ -267,7 +267,7 @@
         <button type="submit" class="btn btn-primary">
           {% if host %}💾 Güncelle{% else %}➕ Ekle{% endif %}
         </button>
-        <a href="{{ url_for('ansible_hosts') }}" class="btn btn-secondary">İptal</a>
+        <a href="{{ url_for('ansible.ansible_hosts') }}" class="btn btn-secondary">İptal</a>
         {% if host %}
         <button type="button" onclick="pingHost({{ host.id }}, '{{ host.name }}')"
           class="btn btn-teal">🔗 Ping Testi</button>

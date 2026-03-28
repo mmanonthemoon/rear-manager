@@ -2,7 +2,7 @@
 {% block title %}Kullanıcılar{% endblock %}
 {% block topbar_title %}👥 Kullanıcı Yönetimi{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('user_add') }}" class="btn btn-primary btn-sm">➕ Kullanıcı Ekle</a>
+  <a href="{{ url_for('users.user_add') }}" class="btn btn-primary btn-sm">➕ Kullanıcı Ekle</a>
 {% endblock %}
 
 {% block content %}
@@ -62,12 +62,12 @@
           </td>
           <td class="td-nowrap">
             <div class="btn-group">
-              <a href="{{ url_for('user_edit', uid=u.id) }}" class="btn btn-secondary btn-sm">Düzenle</a>
+              <a href="{{ url_for('users.user_edit', uid=u.id) }}" class="btn btn-secondary btn-sm">Düzenle</a>
               {% if not u.is_builtin %}
               <button
                 onclick="openConfirm('Kullanıcı Sil','{{ u.username }} kullanıcısı silinecek.','del-user-{{ u.id }}')"
                 class="btn btn-danger btn-sm">Sil</button>
-              <form id="del-user-{{ u.id }}" action="{{ url_for('user_delete', uid=u.id) }}"
+              <form id="del-user-{{ u.id }}" action="{{ url_for('users.user_delete', uid=u.id) }}"
                 method="post" style="display:none"></form>
               {% else %}
               <span class="text-muted" style="font-size:11px;padding:3px 8px">Silinemez</span>

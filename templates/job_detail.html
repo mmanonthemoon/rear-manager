@@ -3,17 +3,17 @@
 {% block topbar_title %}📋 İş #{{ job.id }} — {{ job.server_label }}{% endblock %}
 {% block topbar_actions %}
   {% if is_running %}
-  <form action="{{ url_for('job_cancel', jid=job.id) }}" method="post" style="display:inline">
+  <form action="{{ url_for('jobs.job_cancel', jid=job.id) }}" method="post" style="display:inline">
     <button type="submit" class="btn btn-warning btn-sm">⏹ İptal Et</button>
   </form>
   {% endif %}
-  <a href="{{ url_for('jobs_list') }}" class="btn btn-secondary btn-sm">← Geri</a>
+  <a href="{{ url_for('jobs.jobs_list') }}" class="btn btn-secondary btn-sm">← Geri</a>
 {% endblock %}
 
 {% block content %}
 <div class="breadcrumb">
-  <a href="{{ url_for('jobs_list') }}">İşler</a><span>›</span>
-  <a href="{{ url_for('server_detail', sid=job.server_id) }}">{{ job.server_label }}</a><span>›</span>
+  <a href="{{ url_for('jobs.jobs_list') }}">İşler</a><span>›</span>
+  <a href="{{ url_for('servers.server_detail', sid=job.server_id) }}">{{ job.server_label }}</a><span>›</span>
   <span>İş #{{ job.id }}</span>
 </div>
 
@@ -25,7 +25,7 @@
       <li><span class="info-key">İş #</span><span class="info-val fw-bold">#{{ job.id }}</span></li>
       <li><span class="info-key">Sunucu</span>
         <span class="info-val">
-          <a href="{{ url_for('server_detail', sid=job.server_id) }}" class="link">{{ job.server_label }}</a>
+          <a href="{{ url_for('servers.server_detail', sid=job.server_id) }}" class="link">{{ job.server_label }}</a>
           <span class="font-mono text-muted" style="font-size:11px"> {{ job.ip_address }}</span>
         </span>
       </li>
@@ -102,7 +102,7 @@
 <div style="text-align:right;margin-top:6px">
   <button onclick="openConfirm('Sil','#{{ job.id }} iş kaydı silinecek.','delJobForm')"
     class="btn btn-danger btn-sm">🗑️ Kaydı Sil</button>
-  <form id="delJobForm" action="{{ url_for('job_delete', jid=job.id) }}" method="post" style="display:none"></form>
+  <form id="delJobForm" action="{{ url_for('jobs.job_delete', jid=job.id) }}" method="post" style="display:none"></form>
 </div>
 {% endblock %}
 

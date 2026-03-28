@@ -2,7 +2,7 @@
 {% block title %}Playbook Çalıştır — {{ pb.name }}{% endblock %}
 {% block topbar_title %}▶ Playbook Çalıştır: {{ pb.name }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_playbook_edit', pid=pb.id) }}" class="btn btn-secondary btn-sm">← Editör</a>
+  <a href="{{ url_for('ansible.ansible_playbook_edit', pid=pb.id) }}" class="btn btn-secondary btn-sm">← Editör</a>
 {% endblock %}
 {% block content %}
 <div style="max-width:700px">

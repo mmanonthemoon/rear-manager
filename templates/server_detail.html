@@ -2,13 +2,13 @@
 {% block title %}{{ server.label }}{% endblock %}
 {% block topbar_title %}🖥️ {{ server.label }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('server_edit', sid=server.id) }}" class="btn btn-secondary btn-sm">✏️ Düzenle</a>
-  <a href="{{ url_for('servers_list') }}" class="btn btn-outline btn-sm">← Geri</a>
+  <a href="{{ url_for('servers.server_edit', sid=server.id) }}" class="btn btn-secondary btn-sm">✏️ Düzenle</a>
+  <a href="{{ url_for('servers.servers_list') }}" class="btn btn-outline btn-sm">← Geri</a>
 {% endblock %}
 
 {% block content %}
 <div class="breadcrumb">
-  <a href="{{ url_for('servers_list') }}">Sunucular</a><span>›</span><span>{{ server.label }}</span>
+  <a href="{{ url_for('servers.servers_list') }}">Sunucular</a><span>›</span><span>{{ server.label }}</span>
 </div>
 
 <!-- ÜST SATIRLAR: BAĞLANTI TESTİ + HIZLI İŞLEMLER -->
@@ -72,14 +72,14 @@
       <p class="text-muted" style="font-size:12px;margin-bottom:10px">
         Distro otomatik tespit edilir (Debian/Ubuntu/RHEL/Rocky/Alma/SUSE)
       </p>
-      <form action="{{ url_for('server_install_rear', sid=server.id) }}" method="post">
+      <form action="{{ url_for('servers.server_install_rear', sid=server.id) }}" method="post">
         <button class="btn btn-{% if server.rear_installed %}secondary{% else %}success{% endif %}">
           {% if server.rear_installed %}🔄 Yeniden Kur{% else %}📦 ReaR Kur{% endif %}
         </button>
       </form>
       <hr class="divider">
       {% if server.rear_installed %}
-      <a href="{{ url_for('server_configure', sid=server.id) }}" class="btn btn-primary">⚙️ Yapılandır</a>
+      <a href="{{ url_for('servers.server_configure', sid=server.id) }}" class="btn btn-primary">⚙️ Yapılandır</a>
       {% else %}
       <button class="btn btn-primary" disabled title="Önce ReaR kurun">⚙️ Yapılandır</button>
       {% endif %}
@@ -104,14 +104,14 @@
         <code>{{ cfg.central_ip or '?' }}</code>
         <span class="text-muted" style="font-size:11px">{{ cfg.nfs_export_path or '/srv/rear-backups' }}/{{ _safe_dirname(server.hostname) }}</span>
       </p>
-      <form action="{{ url_for('server_backup', sid=server.id) }}" method="post" style="margin-bottom:6px">
+      <form action="{{ url_for('servers.server_backup', sid=server.id) }}" method="post" style="margin-bottom:6px">
         <input type="hidden" name="backup_type" value="mkbackup">
         <button class="btn btn-success" style="width:100%"
           {% if not server.rear_installed or not server.rear_configured %}disabled title="ReaR kurulu ve yapılandırılmış olmalı"{% endif %}>
           💾 Tam Yedek (mkbackup)
         </button>
       </form>
-      <form action="{{ url_for('server_backup', sid=server.id) }}" method="post">
+      <form action="{{ url_for('servers.server_backup', sid=server.id) }}" method="post">
         <input type="hidden" name="backup_type" value="mkrescue">
         <button class="btn btn-secondary" style="width:100%"
           {% if not server.rear_installed or not server.rear_configured %}disabled title="ReaR kurulu ve yapılandırılmış olmalı"{% endif %}>
@@ -127,7 +127,7 @@
   <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
     <span>🤖 Ansible Entegrasyonu</span>
     {% if ansible_host %}
-      <a href="{{ url_for('ansible_host_edit', hid=ansible_host.id) }}"
+      <a href="{{ url_for('ansible.ansible_host_edit', hid=ansible_host.id) }}"
          class="btn btn-secondary btn-sm">✏️ Ansible Host Düzenle</a>
     {% endif %}
   </div>
@@ -148,10 +148,10 @@
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a href="{{ url_for('ansible_hosts') }}" class="btn btn-outline btn-sm">
+        <a href="{{ url_for('ansible.ansible_hosts') }}" class="btn btn-outline btn-sm">
           📋 Ansible Hostlar
         </a>
-        <form action="{{ url_for('server_ansible_unlink', sid=server.id) }}" method="post"
+        <form action="{{ url_for('servers.server_ansible_unlink', sid=server.id) }}" method="post"
               style="display:inline"
               onsubmit="return confirm('Bağlantıyı kaldırmak istediğinizden emin misiniz?\nAnsible hostu silinmez, sadece bağlantı kopar.')">
           <button class="btn btn-outline btn-sm" style="color:#f85149;border-color:#f85149">
@@ -167,7 +167,7 @@
       </p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
         <!-- Otomatik oluştur -->
-        <form action="{{ url_for('server_ansible_auto_add', sid=server.id) }}" method="post">
+        <form action="{{ url_for('servers.server_ansible_auto_add', sid=server.id) }}" method="post">
           <button class="btn btn-teal">
             ✨ Ansible'a Otomatik Ekle
           </button>
@@ -185,7 +185,7 @@
       {% if all_ansible_hosts %}
       <div id="linkExistingPanel" style="display:none;background:#161b22;
            border:1px solid #30363d;border-radius:6px;padding:12px;margin-top:8px">
-        <form action="{{ url_for('server_ansible_link', sid=server.id) }}" method="post"
+        <form action="{{ url_for('servers.server_ansible_link', sid=server.id) }}" method="post"
               style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
           <div class="form-group" style="margin:0;flex:1;min-width:200px">
             <label style="font-size:12px;color:#8b949e">Ansible Host Seç</label>
@@ -263,18 +263,18 @@
           </td>
           <td class="td-nowrap">
             <div class="btn-group">
-              <form action="{{ url_for('schedule_run_now', scid=s.id) }}" method="post" style="display:inline">
+              <form action="{{ url_for('schedules.schedule_run_now', scid=s.id) }}" method="post" style="display:inline">
                 <button class="btn btn-primary btn-sm" title="Şimdi Çalıştır"
                   {% if not server.rear_installed or not server.rear_configured %}disabled title="ReaR kurulu ve yapılandırılmış olmalı"{% endif %}>▶</button>
               </form>
-              <form action="{{ url_for('schedule_toggle', scid=s.id) }}" method="post" style="display:inline">
+              <form action="{{ url_for('schedules.schedule_toggle', scid=s.id) }}" method="post" style="display:inline">
                 <button class="btn btn-{% if s.enabled %}warning{% else %}success{% endif %} btn-sm">
                   {% if s.enabled %}⏸{% else %}▶{% endif %}
                 </button>
               </form>
               <button onclick="openConfirm('Zamanlamayı Sil','#{{ s.id }} zamanlaması silinecek.','del-sched-{{ s.id }}')"
                 class="btn btn-danger btn-sm">✕</button>
-              <form id="del-sched-{{ s.id }}" action="{{ url_for('schedule_delete', scid=s.id) }}" method="post" style="display:none"></form>
+              <form id="del-sched-{{ s.id }}" action="{{ url_for('schedules.schedule_delete', scid=s.id) }}" method="post" style="display:none"></form>
             </div>
           </td>
         </tr>
@@ -322,7 +322,7 @@
 
 <!-- İŞ GEÇMİŞİ -->
 <div class="card">
-  <div class="card-header">📋 Son İşler <a href="{{ url_for('jobs_list') }}?server={{ server.id }}" class="btn btn-outline btn-sm">Tümü</a></div>
+  <div class="card-header">📋 Son İşler <a href="{{ url_for('jobs.jobs_list') }}?server={{ server.id }}" class="btn btn-outline btn-sm">Tümü</a></div>
   <div class="table-wrap">
     {% if jobs %}
     <table>
@@ -330,7 +330,7 @@
       <tbody>
         {% for j in jobs %}
         <tr>
-          <td><a href="{{ url_for('job_detail', jid=j.id) }}" class="link">#{{ j.id }}</a>
+          <td><a href="{{ url_for('jobs.job_detail', jid=j.id) }}" class="link">#{{ j.id }}</a>
             {% if j.triggered_by == 'scheduler' %}<span class="badge badge-teal" style="font-size:10px">⏰</span>{% endif %}
           </td>
           <td>
@@ -359,7 +359,7 @@
 </div>
 
 <!-- SİL -->
-<form id="delServerForm" action="{{ url_for('server_delete', sid=server.id) }}" method="post" style="display:none"></form>
+<form id="delServerForm" action="{{ url_for('servers.server_delete', sid=server.id) }}" method="post" style="display:none"></form>
 <div style="text-align:right;margin-top:4px">
   <button onclick="openConfirm('Sunucu Sil','{{ server.label }} ve tüm kayıtları silinecek!','delServerForm')"
     class="btn btn-danger btn-sm">🗑️ Sunucuyu Sil</button>
@@ -369,7 +369,7 @@
 <div class="modal-overlay" id="addSchedModal">
   <div class="modal" style="max-width:540px">
     <h3>⏰ Yeni Zamanlama</h3>
-    <form method="post" action="{{ url_for('schedule_add', sid=server.id) }}">
+    <form method="post" action="{{ url_for('schedules.schedule_add', sid=server.id) }}">
       <div class="form-group">
         <label>Yedekleme Türü</label>
         <select name="backup_type" class="form-select">

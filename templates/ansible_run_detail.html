@@ -2,9 +2,9 @@
 {% block title %}Çalışma #{{ run.id }}{% endblock %}
 {% block topbar_title %}▶ Çalışma #{{ run.id }} — {{ run.playbook_name }}{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_runs') }}" class="btn btn-secondary btn-sm">← Tüm Çalışmalar</a>
+  <a href="{{ url_for('ansible.ansible_runs') }}" class="btn btn-secondary btn-sm">← Tüm Çalışmalar</a>
   {% if run.status == 'running' %}
-  <form method="post" action="{{ url_for('ansible_run_cancel', rid=run.id) }}" style="display:inline">
+  <form method="post" action="{{ url_for('ansible.ansible_run_cancel', rid=run.id) }}" style="display:inline">
     <button type="submit" class="btn btn-danger btn-sm">⊘ Durdur</button>
   </form>
   {% endif %}
@@ -66,7 +66,7 @@
       {% if run.status not in ('running', 'pending') %}
       <button onclick="openConfirm('Çalışmayı Sil','Bu çalışma kaydı silinecek.','dr-{{ run.id }}')"
         class="btn btn-danger btn-sm">🗑 Sil</button>
-      <form id="dr-{{ run.id }}" action="{{ url_for('ansible_run_delete', rid=run.id) }}"
+      <form id="dr-{{ run.id }}" action="{{ url_for('ansible.ansible_run_delete', rid=run.id) }}"
         method="post" style="display:none"></form>
       {% endif %}
     </div>

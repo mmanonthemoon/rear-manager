@@ -2,8 +2,8 @@
 {% block title %}Toplu Sunucu Ekle{% endblock %}
 {% block topbar_title %}📋 Toplu Sunucu Ekleme{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('servers_list') }}" class="btn btn-secondary btn-sm">← Geri</a>
-  <a href="{{ url_for('server_add') }}" class="btn btn-outline btn-sm">➕ Tekli Ekle</a>
+  <a href="{{ url_for('servers.servers_list') }}" class="btn btn-secondary btn-sm">← Geri</a>
+  <a href="{{ url_for('servers.server_add') }}" class="btn btn-outline btn-sm">➕ Tekli Ekle</a>
 {% endblock %}
 
 {% block content %}

@@ -174,74 +174,74 @@ textarea.form-control{resize:vertical;min-height:72px;font-family:'Courier New',
   <nav>
     <div class="nav-section">
       <div class="nav-label">Genel</div>
-      <a href="{{ url_for('dashboard') }}"
-         class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+      <a href="{{ url_for('dashboard.dashboard') }}"
+         class="nav-item {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}">
         <i class="nav-icon">📊</i>Dashboard
       </a>
     </div>
     <div class="nav-section">
       <div class="nav-label">Sunucular</div>
-      <a href="{{ url_for('servers_list') }}"
-         class="nav-item {% if request.endpoint in ['servers_list','server_detail','server_add','server_edit','server_configure'] %}active{% endif %}">
+      <a href="{{ url_for('servers.servers_list') }}"
+         class="nav-item {% if request.endpoint in ['servers.servers_list','servers.server_detail','servers.server_add','servers.server_edit','servers.server_configure'] %}active{% endif %}">
         <i class="nav-icon">🖥️</i>Sunucu Listesi
       </a>
-      <a href="{{ url_for('server_add') }}"
-         class="nav-item {% if request.endpoint == 'server_add' %}active{% endif %}">
+      <a href="{{ url_for('servers.server_add') }}"
+         class="nav-item {% if request.endpoint == 'servers.server_add' %}active{% endif %}">
         <i class="nav-icon">➕</i>Sunucu Ekle
       </a>
-      <a href="{{ url_for('server_bulk_add') }}"
-         class="nav-item {% if request.endpoint == 'server_bulk_add' %}active{% endif %}">
+      <a href="{{ url_for('servers.server_bulk_add') }}"
+         class="nav-item {% if request.endpoint == 'servers.server_bulk_add' %}active{% endif %}">
         <i class="nav-icon">📋</i>Toplu Ekle
       </a>
     </div>
     <div class="nav-section">
       <div class="nav-label">Ansible</div>
-      <a href="{{ url_for('ansible_dashboard') }}"
-         class="nav-item {% if request.endpoint == 'ansible_dashboard' %}active{% endif %}">
+      <a href="{{ url_for('ansible.ansible_dashboard') }}"
+         class="nav-item {% if request.endpoint == 'ansible.ansible_dashboard' %}active{% endif %}">
         <i class="nav-icon">⚡</i>Dashboard
       </a>
-      <a href="{{ url_for('ansible_hosts') }}"
-         class="nav-item {% if request.endpoint in ['ansible_hosts','ansible_host_add','ansible_host_edit'] %}active{% endif %}">
+      <a href="{{ url_for('ansible.ansible_hosts') }}"
+         class="nav-item {% if request.endpoint in ['ansible.ansible_hosts','ansible.ansible_host_add','ansible.ansible_host_edit'] %}active{% endif %}">
         <i class="nav-icon">🖥</i>Hostlar
       </a>
-      <a href="{{ url_for('ansible_groups') }}"
-         class="nav-item {% if request.endpoint == 'ansible_groups' %}active{% endif %}">
+      <a href="{{ url_for('ansible.ansible_groups') }}"
+         class="nav-item {% if request.endpoint == 'ansible.ansible_groups' %}active{% endif %}">
         <i class="nav-icon">🗂</i>Gruplar
       </a>
-      <a href="{{ url_for('ansible_playbooks') }}"
-         class="nav-item {% if request.endpoint in ['ansible_playbooks','ansible_playbook_edit','ansible_playbook_add'] %}active{% endif %}">
+      <a href="{{ url_for('ansible.ansible_playbooks') }}"
+         class="nav-item {% if request.endpoint in ['ansible.ansible_playbooks','ansible.ansible_playbook_edit','ansible.ansible_playbook_add'] %}active{% endif %}">
         <i class="nav-icon">📜</i>Playbooklar
       </a>
-      <a href="{{ url_for('ansible_roles') }}"
-         class="nav-item {% if request.endpoint in ['ansible_roles','ansible_role_edit'] %}active{% endif %}">
+      <a href="{{ url_for('ansible.ansible_roles') }}"
+         class="nav-item {% if request.endpoint in ['ansible.ansible_roles','ansible.ansible_role_edit'] %}active{% endif %}">
         <i class="nav-icon">🎭</i>Roller
       </a>
-      <a href="{{ url_for('ansible_runs') }}"
-         class="nav-item {% if request.endpoint in ['ansible_runs','ansible_run_detail'] %}active{% endif %}">
+      <a href="{{ url_for('ansible.ansible_runs') }}"
+         class="nav-item {% if request.endpoint in ['ansible.ansible_runs','ansible.ansible_run_detail'] %}active{% endif %}">
         <i class="nav-icon">▶</i>Çalışmalar
       </a>
     </div>
     <div class="nav-section">
       <div class="nav-label">Yedekleme</div>
-      <a href="{{ url_for('jobs_list') }}"
-         class="nav-item {% if request.endpoint in ['jobs_list','job_detail'] %}active{% endif %}">
+      <a href="{{ url_for('jobs.jobs_list') }}"
+         class="nav-item {% if request.endpoint in ['jobs.jobs_list','jobs.job_detail'] %}active{% endif %}">
         <i class="nav-icon">📋</i>İş Listesi
       </a>
     </div>
     <div class="nav-section">
       <div class="nav-label">Yönetim</div>
       {% if session.get('user_role') == 'admin' %}
-      <a href="{{ url_for('users_list') }}"
-         class="nav-item {% if request.endpoint in ['users_list','user_add','user_edit'] %}active{% endif %}">
+      <a href="{{ url_for('users.users_list') }}"
+         class="nav-item {% if request.endpoint in ['users.users_list','users.user_add','users.user_edit'] %}active{% endif %}">
         <i class="nav-icon">👥</i>Kullanıcılar
       </a>
-      <a href="{{ url_for('settings_page') }}"
-         class="nav-item {% if request.endpoint == 'settings_page' %}active{% endif %}">
+      <a href="{{ url_for('settings.settings_page') }}"
+         class="nav-item {% if request.endpoint == 'settings.settings_page' %}active{% endif %}">
         <i class="nav-icon">⚙️</i>Ayarlar
       </a>
       {% endif %}
-      <a href="{{ url_for('change_password') }}"
-         class="nav-item {% if request.endpoint == 'change_password' %}active{% endif %}">
+      <a href="{{ url_for('users.change_password') }}"
+         class="nav-item {% if request.endpoint == 'users.change_password' %}active{% endif %}">
         <i class="nav-icon">🔑</i>Şifre Değiştir
       </a>
     </div>
@@ -259,7 +259,7 @@ textarea.form-control{resize:vertical;min-height:72px;font-family:'Courier New',
         </div>
       </div>
     </div>
-    <a href="{{ url_for('logout') }}" class="btn btn-secondary btn-sm" style="width:100%;justify-content:center">
+    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary btn-sm" style="width:100%;justify-content:center">
       🚪 Çıkış
     </a>
   </div>

@@ -2,8 +2,8 @@
 {% block title %}Ansible{% endblock %}
 {% block topbar_title %}⚡ Ansible Yönetim Merkezi{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_hosts') }}" class="btn btn-outline btn-sm">🖥 Hostlar</a>
-  <a href="{{ url_for('ansible_playbooks') }}" class="btn btn-primary btn-sm">▶ Playbooklar</a>
+  <a href="{{ url_for('ansible.ansible_hosts') }}" class="btn btn-outline btn-sm">🖥 Hostlar</a>
+  <a href="{{ url_for('ansible.ansible_playbooks') }}" class="btn btn-primary btn-sm">▶ Playbooklar</a>
 {% endblock %}
 
 {% block content %}
@@ -70,7 +70,7 @@ dnf install -y ansible              # RHEL/CentOS</pre>
 <div class="card">
   <div class="card-header">
     ▶ Son Çalışmalar
-    <a href="{{ url_for('ansible_runs') }}" class="btn btn-outline btn-sm" style="float:right">Tümü</a>
+    <a href="{{ url_for('ansible.ansible_runs') }}" class="btn btn-outline btn-sm" style="float:right">Tümü</a>
   </div>
   <div class="table-wrap">
     {% if recent_runs %}
@@ -82,7 +82,7 @@ dnf install -y ansible              # RHEL/CentOS</pre>
         {% for r in recent_runs %}
         <tr>
           <td class="text-muted font-mono" style="font-size:11px">{{ r.id }}</td>
-          <td><a href="{{ url_for('ansible_run_detail', rid=r.id) }}" class="link">{{ r.playbook_name }}</a></td>
+          <td><a href="{{ url_for('ansible.ansible_run_detail', rid=r.id) }}" class="link">{{ r.playbook_name }}</a></td>
           <td class="text-muted font-mono" style="font-size:11px">{{ r.limit_hosts or 'all' }}</td>
           <td>
             {% if r.status == 'success' %}<span class="badge badge-success">✓ Başarılı</span>
@@ -94,7 +94,7 @@ dnf install -y ansible              # RHEL/CentOS</pre>
           <td class="text-muted" style="font-size:11px">
             {% if r.started_at %}{{ r.started_at[:16] }}{% else %}—{% endif %}
           </td>
-          <td><a href="{{ url_for('ansible_run_detail', rid=r.id) }}" class="btn btn-outline btn-sm">Log</a></td>
+          <td><a href="{{ url_for('ansible.ansible_run_detail', rid=r.id) }}" class="btn btn-outline btn-sm">Log</a></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -103,7 +103,7 @@ dnf install -y ansible              # RHEL/CentOS</pre>
     <div class="empty-state" style="padding:30px">
       <div class="empty-icon">⟳</div>
       <p>Henüz playbook çalıştırılmadı.</p>
-      <a href="{{ url_for('ansible_playbooks') }}" class="btn btn-primary btn-sm">Playbook'lara Git</a>
+      <a href="{{ url_for('ansible.ansible_playbooks') }}" class="btn btn-primary btn-sm">Playbook'lara Git</a>
     </div>
     {% endif %}
   </div>
@@ -114,19 +114,19 @@ dnf install -y ansible              # RHEL/CentOS</pre>
 <div class="card">
   <div class="card-header">🚀 Hızlı Erişim</div>
   <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-    <a href="{{ url_for('ansible_host_add') }}" class="btn btn-outline" style="text-align:center;padding:14px 8px">
+    <a href="{{ url_for('ansible.ansible_host_add') }}" class="btn btn-outline" style="text-align:center;padding:14px 8px">
       <div style="font-size:22px;margin-bottom:4px">🖥</div>
       <div style="font-size:12px">Host Ekle</div>
     </a>
-    <a href="{{ url_for('ansible_groups') }}" class="btn btn-outline" style="text-align:center;padding:14px 8px">
+    <a href="{{ url_for('ansible.ansible_groups') }}" class="btn btn-outline" style="text-align:center;padding:14px 8px">
       <div style="font-size:22px;margin-bottom:4px">📁</div>
       <div style="font-size:12px">Gruplar</div>
     </a>
-    <a href="{{ url_for('ansible_playbook_add') }}" class="btn btn-outline" style="text-align:center;padding:14px 8px">
+    <a href="{{ url_for('ansible.ansible_playbook_add') }}" class="btn btn-outline" style="text-align:center;padding:14px 8px">
       <div style="font-size:22px;margin-bottom:4px">📝</div>
       <div style="font-size:12px">Yeni Playbook</div>
     </a>
-    <a href="{{ url_for('ansible_roles') }}" class="btn btn-outline" style="text-align:center;padding:14px 8px">
+    <a href="{{ url_for('ansible.ansible_roles') }}" class="btn btn-outline" style="text-align:center;padding:14px 8px">
       <div style="font-size:22px;margin-bottom:4px">🎭</div>
       <div style="font-size:12px">Roller</div>
     </a>

@@ -2,8 +2,8 @@
 {% block title %}Sunucular{% endblock %}
 {% block topbar_title %}🖥️ Sunucu Listesi{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('server_add') }}" class="btn btn-primary btn-sm">➕ Tekli Ekle</a>
-  <a href="{{ url_for('server_bulk_add') }}" class="btn btn-teal btn-sm">📋 Toplu Ekle</a>
+  <a href="{{ url_for('servers.server_add') }}" class="btn btn-primary btn-sm">➕ Tekli Ekle</a>
+  <a href="{{ url_for('servers.server_bulk_add') }}" class="btn btn-teal btn-sm">📋 Toplu Ekle</a>
 {% endblock %}
 
 {% block content %}
@@ -31,7 +31,7 @@
         {% for s in servers %}
         <tr>
           <td>
-            <a href="{{ url_for('server_detail', sid=s.id) }}" class="link fw-bold">{{ s.label }}</a>
+            <a href="{{ url_for('servers.server_detail', sid=s.id) }}" class="link fw-bold">{{ s.label }}</a>
             <div class="font-mono text-muted" style="font-size:11px">{{ s.hostname }}</div>
           </td>
           <td class="font-mono" style="font-size:12px">{{ s.ip_address }}:{{ s.ssh_port }}</td>
@@ -79,15 +79,15 @@
           </td>
           <td class="td-nowrap">
             <div class="btn-group">
-              <a href="{{ url_for('server_detail', sid=s.id) }}"
+              <a href="{{ url_for('servers.server_detail', sid=s.id) }}"
                  class="btn btn-outline btn-sm">Detay</a>
-              <a href="{{ url_for('server_edit', sid=s.id) }}"
+              <a href="{{ url_for('servers.server_edit', sid=s.id) }}"
                  class="btn btn-secondary btn-sm">Düzenle</a>
               <button onclick="openConfirm('Sunucu Sil',
                 '{{ s.label }} ve tüm kayıtları silinecek!','del-s-{{ s.id }}')"
                 class="btn btn-danger btn-sm">Sil</button>
               <form id="del-s-{{ s.id }}"
-                action="{{ url_for('server_delete', sid=s.id) }}"
+                action="{{ url_for('servers.server_delete', sid=s.id) }}"
                 method="post" style="display:none"></form>
             </div>
           </td>
@@ -100,8 +100,8 @@
       <div class="empty-icon">🖥️</div>
       <p>Henüz sunucu yok.</p>
       <div class="btn-group" style="justify-content:center;margin-top:12px">
-        <a href="{{ url_for('server_add') }}" class="btn btn-primary">➕ Tekli Ekle</a>
-        <a href="{{ url_for('server_bulk_add') }}" class="btn btn-teal">📋 Toplu Ekle</a>
+        <a href="{{ url_for('servers.server_add') }}" class="btn btn-primary">➕ Tekli Ekle</a>
+        <a href="{{ url_for('servers.server_bulk_add') }}" class="btn btn-teal">📋 Toplu Ekle</a>
       </div>
     </div>
     {% endif %}

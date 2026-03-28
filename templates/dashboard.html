@@ -2,7 +2,7 @@
 {% block title %}Dashboard{% endblock %}
 {% block topbar_title %}📊 Dashboard{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('server_add') }}" class="btn btn-primary btn-sm">➕ Sunucu Ekle</a>
+  <a href="{{ url_for('servers.server_add') }}" class="btn btn-primary btn-sm">➕ Sunucu Ekle</a>
 {% endblock %}
 
 {% block content %}
@@ -18,7 +18,7 @@
 
 <div class="grid-2">
 <div class="card">
-  <div class="card-header">🖥️ Sunucular <a href="{{ url_for('servers_list') }}" class="btn btn-outline btn-sm">Tümü</a></div>
+  <div class="card-header">🖥️ Sunucular <a href="{{ url_for('servers.servers_list') }}" class="btn btn-outline btn-sm">Tümü</a></div>
   <div class="table-wrap">
     {% if servers %}
     <table>
@@ -27,7 +27,7 @@
         {% for s in servers %}
         <tr>
           <td>
-            <a href="{{ url_for('server_detail', sid=s.id) }}" class="link fw-bold">{{ s.label }}</a>
+            <a href="{{ url_for('servers.server_detail', sid=s.id) }}" class="link fw-bold">{{ s.label }}</a>
             <div class="text-muted font-mono" style="font-size:11px">{{ s.hostname }}</div>
           </td>
           <td class="font-mono text-muted" style="font-size:12px">{{ s.ip_address }}</td>
@@ -37,20 +37,20 @@
             {% else %}<span class="badge badge-secondary">—</span>{% endif %}
           </td>
           <td class="font-mono text-muted" style="font-size:12px">{{ backup_info.get(s.id, '-') }}</td>
-          <td><a href="{{ url_for('server_detail', sid=s.id) }}" class="btn btn-outline btn-sm">Detay</a></td>
+          <td><a href="{{ url_for('servers.server_detail', sid=s.id) }}" class="btn btn-outline btn-sm">Detay</a></td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% else %}
     <div class="empty-state"><div class="empty-icon">🖥️</div><p>Henüz sunucu yok.</p>
-    <a href="{{ url_for('server_add') }}" class="btn btn-primary" style="margin-top:10px">Ekle</a></div>
+    <a href="{{ url_for('servers.server_add') }}" class="btn btn-primary" style="margin-top:10px">Ekle</a></div>
     {% endif %}
   </div>
 </div>
 
 <div class="card">
-  <div class="card-header">📋 Son İşler <a href="{{ url_for('jobs_list') }}" class="btn btn-outline btn-sm">Tümü</a></div>
+  <div class="card-header">📋 Son İşler <a href="{{ url_for('jobs.jobs_list') }}" class="btn btn-outline btn-sm">Tümü</a></div>
   <div class="table-wrap">
     {% if jobs %}
     <table>
@@ -58,7 +58,7 @@
       <tbody>
         {% for j in jobs %}
         <tr>
-          <td><a href="{{ url_for('job_detail', jid=j.id) }}" class="link">#{{ j.id }}</a></td>
+          <td><a href="{{ url_for('jobs.job_detail', jid=j.id) }}" class="link">#{{ j.id }}</a></td>
           <td style="font-size:12px">{{ j.server_label }}</td>
           <td>
             {% if j.job_type == 'backup' %}<span class="badge badge-info">💾</span>
@@ -98,8 +98,8 @@
   <li>Sunucu Detayı → Zamanlamalar → <strong>Otomatik yedekleme ekle</strong></li>
 </ol>
 <div class="btn-group" style="margin-top:14px">
-  <a href="{{ url_for('settings_page') }}" class="btn btn-primary">⚙️ Ayarlar</a>
-  <a href="{{ url_for('server_add') }}" class="btn btn-success">➕ Sunucu Ekle</a>
+  <a href="{{ url_for('settings.settings_page') }}" class="btn btn-primary">⚙️ Ayarlar</a>
+  <a href="{{ url_for('servers.server_add') }}" class="btn btn-success">➕ Sunucu Ekle</a>
 </div>
 </div></div>
 {% endif %}

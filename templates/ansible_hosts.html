@@ -2,9 +2,9 @@
 {% block title %}Ansible Hostlar{% endblock %}
 {% block topbar_title %}🖥 Ansible Hostlar{% endblock %}
 {% block topbar_actions %}
-  <a href="{{ url_for('ansible_host_bulk_add') }}" class="btn btn-outline btn-sm">📋 Toplu Ekle</a>
-  <a href="{{ url_for('ansible_host_add') }}" class="btn btn-primary btn-sm">➕ Host Ekle</a>
-  <a href="{{ url_for('ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
+  <a href="{{ url_for('ansible.ansible_host_bulk_add') }}" class="btn btn-outline btn-sm">📋 Toplu Ekle</a>
+  <a href="{{ url_for('ansible.ansible_host_add') }}" class="btn btn-primary btn-sm">➕ Host Ekle</a>
+  <a href="{{ url_for('ansible.ansible_dashboard') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
 {% endblock %}
 
 {% block content %}
@@ -33,7 +33,7 @@
         {% set h_groups = hg_map.get(h.id, []) %}
         <tr>
           <td>
-            <a href="{{ url_for('ansible_host_edit', hid=h.id) }}" class="link fw-bold">{{ h.name }}</a>
+            <a href="{{ url_for('ansible.ansible_host_edit', hid=h.id) }}" class="link fw-bold">{{ h.name }}</a>
             <div class="font-mono text-muted" style="font-size:11px">{{ h.hostname }}</div>
           </td>
           <td>
@@ -93,11 +93,11 @@
             <div class="btn-group">
               <button onclick="pingHost({{ h.id }}, '{{ h.name }}')"
                 class="btn btn-teal btn-sm" title="Bağlantı Testi">🔗 Ping</button>
-              <a href="{{ url_for('ansible_host_edit', hid=h.id) }}"
+              <a href="{{ url_for('ansible.ansible_host_edit', hid=h.id) }}"
                  class="btn btn-secondary btn-sm">Düzenle</a>
               <button onclick="openConfirm('Host Sil','{{ h.name }} silinecek!','dh-{{ h.id }}')"
                 class="btn btn-danger btn-sm">Sil</button>
-              <form id="dh-{{ h.id }}" action="{{ url_for('ansible_host_delete', hid=h.id) }}"
+              <form id="dh-{{ h.id }}" action="{{ url_for('ansible.ansible_host_delete', hid=h.id) }}"
                 method="post" style="display:none"></form>
             </div>
           </td>
@@ -109,7 +109,7 @@
     <div class="empty-state">
       <div class="empty-icon">🖥</div>
       <p>Henüz host yok.</p>
-      <a href="{{ url_for('ansible_host_add') }}" class="btn btn-primary">➕ Host Ekle</a>
+      <a href="{{ url_for('ansible.ansible_host_add') }}" class="btn btn-primary">➕ Host Ekle</a>
     </div>
     {% endif %}
   </div>
