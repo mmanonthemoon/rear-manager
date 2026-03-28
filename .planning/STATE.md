@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 03-testing 03-01-PLAN.md
-last_updated: "2026-03-28T20:50:04.152Z"
+stopped_at: Completed 03-testing 03-02-PLAN.md
+last_updated: "2026-03-28T20:54:13.968Z"
 last_activity: 2026-03-17 — Roadmap created
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-refactoring P05 | 10 | 2 tasks | 35 files |
 | Phase 02-refactoring P06 | 9 | 2 tasks | 10 files |
 | Phase 03-testing P01 | 2 | 2 tasks | 2 files |
+| Phase 03-testing P02 | 175 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ Recent decisions affecting current work:
 - [Phase 02-refactoring]: sqlite3.IntegrityError/OperationalError for DB constraint violations in routes; not generic sqlite3.Error
 - [Phase 03-testing]: Patch target is patch.object(ssh_module, 'build_ssh_client') — intercepts all SSH client construction without real server
 - [Phase 03-testing]: app_context fixture (not app_with_db) used for SSH service tests — need Flask context for current_app.logger but no DB access
+- [Phase 03-testing]: Patch services.rear.get_ubuntu_codename_via_ssh directly (not build_ssh_client) to bypass SSH entirely in Ubuntu install path
+- [Phase 03-testing]: Use app_with_db fixture for ReaR integration tests since background runner functions require DB context for job_repo operations
 
 ### Pending Todos
 
@@ -97,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T20:50:04.148Z
-Stopped at: Completed 03-testing 03-01-PLAN.md
+Last session: 2026-03-28T20:54:13.964Z
+Stopped at: Completed 03-testing 03-02-PLAN.md
 Resume file: None
