@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 03-testing 03-02-PLAN.md
-last_updated: "2026-03-28T20:54:13.968Z"
+stopped_at: Completed 03-testing 03-03-PLAN.md
+last_updated: "2026-03-28T20:57:38.587Z"
 last_activity: 2026-03-17 — Roadmap created
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-refactoring P06 | 9 | 2 tasks | 10 files |
 | Phase 03-testing P01 | 2 | 2 tasks | 2 files |
 | Phase 03-testing P02 | 175 | 2 tasks | 1 files |
+| Phase 03-testing P03 | 5 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,8 @@ Recent decisions affecting current work:
 - [Phase 03-testing]: app_context fixture (not app_with_db) used for SSH service tests — need Flask context for current_app.logger but no DB access
 - [Phase 03-testing]: Patch services.rear.get_ubuntu_codename_via_ssh directly (not build_ssh_client) to bypass SSH entirely in Ubuntu install path
 - [Phase 03-testing]: Use app_with_db fixture for ReaR integration tests since background runner functions require DB context for job_repo operations
+- [Phase 03-testing]: monkeypatch.setattr(ansible_service, 'ANSIBLE_INV_DIR') patches module-level constants so _generate_inventory writes to tmp_path, not real ansible/inventories/
+- [Phase 03-testing]: _do_ansible_run called directly (not via start_ansible_run) in tests — avoids thread complexity while app context provided by app_with_db fixture
 
 ### Pending Todos
 
@@ -100,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T20:54:13.964Z
-Stopped at: Completed 03-testing 03-02-PLAN.md
+Last session: 2026-03-28T20:57:38.583Z
+Stopped at: Completed 03-testing 03-03-PLAN.md
 Resume file: None
