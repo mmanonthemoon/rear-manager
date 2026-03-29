@@ -2,11 +2,15 @@
 from db import get_db
 
 
-def get_all():
+def get_all(offset=0, limit=25):
     conn = get_db()
-    rows = conn.execute('SELECT * FROM servers ORDER BY label').fetchall()
+    rows = conn.execute(
+        'SELECT * FROM servers ORDER BY label LIMIT ? OFFSET ?',
+        (limit, offset)
+    ).fetchall()
+    total = conn.execute('SELECT COUNT(*) FROM servers').fetchone()[0]
     conn.close()
-    return rows
+    return rows, total
 
 
 def get_by_id(sid):
