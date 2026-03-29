@@ -138,7 +138,7 @@ def login_required(f):
                     or request.accept_mimetypes.best == 'application/json'
                     or request.path.startswith('/api/')):
                 return jsonify({'ok': False, 'msg': 'Oturum süresi doldu, sayfayı yenileyin.'}), 401
-            return redirect(url_for('login', next=request.url))
+            return redirect(url_for('auth.login', next=request.url))
         # Session timeout kontrolü
         cfg = settings_repo.get_settings()
         timeout_min = int(cfg.get('session_timeout', 480))
@@ -150,7 +150,7 @@ def login_required(f):
                     or request.path.startswith('/api/')):
                 return jsonify({'ok': False, 'msg': 'Oturum süresi doldu, sayfayı yenileyin.'}), 401
             flash('Oturum süresi doldu.', 'warning')
-            return redirect(url_for('login'))
+            return redirect(url_for('auth.login'))
         session['last_active'] = time.time()
         return f(*args, **kwargs)
     return decorated
