@@ -28,7 +28,7 @@
 
 ### Missing Features
 
-- [ ] **FEAT-01**: Jobs, servers ve ansible runs listelerinde sayfalama (LIMIT/OFFSET, 25 kayıt/sayfa)
+- [x] **FEAT-01**: Jobs, servers ve ansible runs listelerinde sayfalama (LIMIT/OFFSET, 25 kayıt/sayfa)
 - [ ] **FEAT-02**: Denetim logu: kim hangi yedekleme / Ansible komutunu ne zaman çalıştırdı kaydedilmeli
 - [x] **FEAT-03**: `backup_jobs.output` ve `ansible_runs.output` sütunlarına maksimum boyut kontrolü (ör: 1 MB limit, önce truncate sonra kaydet)
 
@@ -80,7 +80,7 @@
 | TEST-01 | Phase 3 | Complete |
 | TEST-02 | Phase 3 | Complete |
 | TEST-03 | Phase 3 | Complete |
-| FEAT-01 | Phase 4 | Pending |
+| FEAT-01 | Phase 4 | Complete |
 | FEAT-02 | Phase 4 | Pending |
 | FEAT-03 | Phase 4 | Complete |
 

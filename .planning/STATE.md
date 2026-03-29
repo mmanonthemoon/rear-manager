@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 04-features 04-03-PLAN.md
-last_updated: "2026-03-29T11:47:34.052Z"
+stopped_at: Completed 04-features 04-01-PLAN.md
+last_updated: "2026-03-29T11:52:13.280Z"
 last_activity: 2026-03-17 — Roadmap created
 progress:
   total_phases: 4
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-testing P02 | 175 | 2 tasks | 1 files |
 | Phase 03-testing P03 | 5 | 2 tasks | 1 files |
 | Phase 04-features P03 | 4 | 1 tasks | 4 files |
+| Phase 04-features P01 | 7 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,8 @@ Recent decisions affecting current work:
 - [Phase 03-testing]: monkeypatch.setattr(ansible_service, 'ANSIBLE_INV_DIR') patches module-level constants so _generate_inventory writes to tmp_path, not real ansible/inventories/
 - [Phase 03-testing]: _do_ansible_run called directly (not via start_ansible_run) in tests — avoids thread complexity while app context provided by app_with_db fixture
 - [Phase 04-features]: truncate_output uses byte-level slicing with decode errors='ignore' to preserve Turkish UTF-8 multi-byte sequences; 1 MB hard cap replaces 2 MB threshold / 500 KB tail-trim pattern
+- [Phase 04-features]: Repository functions return (rows, total) tuple; routes compute total_pages = max(1, ceil(total/PAGE_SIZE))
+- [Phase 04-features]: dashboard.py uses get_all(offset=0, limit=10000) to get all servers as tuple unpack
 
 ### Pending Todos
 
@@ -105,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29T11:47:34.048Z
-Stopped at: Completed 04-features 04-03-PLAN.md
+Last session: 2026-03-29T11:52:13.266Z
+Stopped at: Completed 04-features 04-01-PLAN.md
 Resume file: None
