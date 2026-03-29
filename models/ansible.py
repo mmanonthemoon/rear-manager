@@ -399,25 +399,18 @@ def delete_playbook(pid):
 
 # ── Runs ─────────────────────────────────────────────────────
 
-def get_runs(limit=None):
+def get_runs(offset=0, limit=25):
     conn = get_db()
-    if limit:
-        rows = conn.execute(
-            '''SELECT r.*, p.name as pb_file
-               FROM ansible_runs r
-               LEFT JOIN ansible_playbooks p ON p.id = r.playbook_id
-               ORDER BY r.id DESC LIMIT ?''',
-            (limit,)
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            '''SELECT r.*, p.name as pb_file
-               FROM ansible_runs r
-               LEFT JOIN ansible_playbooks p ON p.id = r.playbook_id
-               ORDER BY r.id DESC LIMIT 100'''
-        ).fetchall()
+    rows = conn.execute(
+        '''SELECT r.*, p.name as playbook_name
+           FROM ansible_runs r
+           LEFT JOIN ansible_playbooks p ON p.id = r.playbook_id
+           ORDER BY r.id DESC LIMIT ? OFFSET ?''',
+        (limit, offset)
+    ).fetchall()
+    total = conn.execute('SELECT COUNT(*) FROM ansible_runs').fetchone()[0]
     conn.close()
-    return rows
+    return rows, total
 
 
 def get_recent_runs(limit=15):
@@ -495,25 +488,19 @@ def set_run_started(rid):
 
 
 def append_run_log(rid, text):
-    """Append text to run output. Trims to last 500KB if over 2MB."""
+    """Append text to run output. Hard-caps total at 1 MB (FEAT-03)."""
+    from utils import truncate_output
     conn = get_db()
     row = conn.execute(
-        "SELECT length(output) FROM ansible_runs WHERE id=?", (rid,)
+        "SELECT output FROM ansible_runs WHERE id=?", (rid,)
     ).fetchone()
-    current_size = row[0] if row and row[0] else 0
-
-    if current_size > 2_000_000:
-        conn.execute(
-            "UPDATE ansible_runs SET output = "
-            "'[... önceki loglar kırpıldı ...]\n' || substr(output, -500000) || ? "
-            "WHERE id=?",
-            (text + '\n', rid)
-        )
-    else:
-        conn.execute(
-            "UPDATE ansible_runs SET output = output || ? WHERE id=?",
-            (text + '\n', rid)
-        )
+    existing = (row['output'] or '') if row else ''
+    combined = existing + text + '\n'
+    combined = truncate_output(combined, max_bytes=1_000_000)
+    conn.execute(
+        "UPDATE ansible_runs SET output=? WHERE id=?",
+        (combined, rid)
+    )
     conn.commit()
     conn.close()
 

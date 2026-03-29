@@ -70,3 +70,20 @@ def calc_duration(started_at, finished_at):
             return f'{h}h {m}m'
     except Exception:
         return '-'
+
+
+def truncate_output(text, max_bytes=1_000_000):
+    """Truncate text to max_bytes, appending a marker if truncated.
+
+    Uses byte-level truncation with UTF-8 safety (decode with errors='ignore'
+    to avoid splitting multi-byte sequences like Turkish ş/ğ/ç).
+    """
+    if not text:
+        return text
+
+    text_bytes = text.encode('utf-8')
+    if len(text_bytes) <= max_bytes:
+        return text
+
+    truncated = text_bytes[:max_bytes].decode('utf-8', errors='ignore')
+    return truncated + '\n\n[... çıkış 1 MB sınırında kesildi ...]'

@@ -21,27 +21,42 @@ def get_all(limit=None):
     return rows
 
 
-def get_all_filtered(status_filter=None, type_filter=None, server_filter=None):
+def get_all_filtered(status_filter=None, type_filter=None, server_filter=None, offset=0, limit=25):
     conn = get_db()
-    query = '''
+    query_base = '''
         SELECT j.*, s.label as server_label, s.hostname
         FROM backup_jobs j JOIN servers s ON s.id=j.server_id
         WHERE 1=1
     '''
     params = []
     if status_filter:
-        query += ' AND j.status=?'
+        query_base += ' AND j.status=?'
         params.append(status_filter)
     if type_filter:
-        query += ' AND j.job_type=?'
+        query_base += ' AND j.job_type=?'
         params.append(type_filter)
     if server_filter:
-        query += ' AND j.server_id=?'
+        query_base += ' AND j.server_id=?'
         params.append(server_filter)
-    query += ' ORDER BY j.id DESC LIMIT 300'
-    rows = conn.execute(query, params).fetchall()
+
+    data_query = query_base + ' ORDER BY j.id DESC LIMIT ? OFFSET ?'
+    rows = conn.execute(data_query, params + [limit, offset]).fetchall()
+
+    count_query = 'SELECT COUNT(*) FROM backup_jobs j WHERE 1=1'
+    count_params = []
+    if status_filter:
+        count_query += ' AND j.status=?'
+        count_params.append(status_filter)
+    if type_filter:
+        count_query += ' AND j.job_type=?'
+        count_params.append(type_filter)
+    if server_filter:
+        count_query += ' AND j.server_id=?'
+        count_params.append(server_filter)
+
+    total = conn.execute(count_query, count_params).fetchone()[0]
     conn.close()
-    return rows
+    return rows, total
 
 
 def get_by_id(jid):
@@ -132,25 +147,19 @@ def set_started(jid):
 
 
 def append_log(jid, text):
-    """Append text to job log_output. Trims to last 500KB if over 2MB."""
+    """Append text to job log_output. Hard-caps total at 1 MB (FEAT-03)."""
+    from utils import truncate_output
     conn = get_db()
     row = conn.execute(
-        "SELECT length(log_output) FROM backup_jobs WHERE id=?", (jid,)
+        "SELECT log_output FROM backup_jobs WHERE id=?", (jid,)
     ).fetchone()
-    current_size = row[0] if row and row[0] else 0
-
-    if current_size > 2_000_000:
-        conn.execute(
-            "UPDATE backup_jobs SET log_output = "
-            "'[... önceki loglar kırpıldı ...]\n' || substr(log_output, -500000) || ? "
-            "WHERE id=?",
-            (text + '\n', jid)
-        )
-    else:
-        conn.execute(
-            "UPDATE backup_jobs SET log_output = log_output || ? WHERE id=?",
-            (text + '\n', jid)
-        )
+    existing = (row['log_output'] or '') if row else ''
+    combined = existing + text + '\n'
+    combined = truncate_output(combined, max_bytes=1_000_000)
+    conn.execute(
+        "UPDATE backup_jobs SET log_output=? WHERE id=?",
+        (combined, jid)
+    )
     conn.commit()
     conn.close()
 
