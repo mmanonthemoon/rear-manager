@@ -5,7 +5,7 @@ import sqlite3
 import datetime
 import subprocess
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, jsonify
 
 from services.auth import login_required
 from services import ssh as ssh_service
@@ -17,11 +17,14 @@ from models import schedules as schedule_repo
 from models import jobs as job_repo
 from models import settings as settings_repo
 from models import ansible as ansible_repo
+from models import audit as audit_repo
 from config import BACKUP_ROOT
 from utils import safe_dirname as _safe_dirname
 
 
 servers_bp = Blueprint('servers', __name__)
+
+PAGE_SIZE = 25
 
 
 def _get_settings():
@@ -31,7 +34,13 @@ def _get_settings():
 @servers_bp.route('/servers')
 @login_required
 def servers_list():
-    servers = server_repo.get_all()
+    page = request.args.get('page', 1, type=int)
+    if page < 1:
+        page = 1
+    offset = (page - 1) * PAGE_SIZE
+
+    servers, total = server_repo.get_all(offset=offset, limit=PAGE_SIZE)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     ansible_map = {}
     for s in servers:
         if s['ansible_host_id']:
@@ -39,7 +48,12 @@ def servers_list():
             ansible_map[s['id']] = ah
         else:
             ansible_map[s['id']] = None
-    return render_template('servers.html', servers=servers, ansible_map=ansible_map)
+    return render_template('servers.html',
+                           servers=servers,
+                           ansible_map=ansible_map,
+                           current_page=page,
+                           total_pages=total_pages,
+                           total=total)
 
 
 @servers_bp.route('/servers/add', methods=['GET', 'POST'])
@@ -378,6 +392,16 @@ def server_install_rear(sid):
         flash('Sunucu bulunamadı.', 'danger')
         return redirect(url_for('servers.servers_list'))
     job_id = job_service.create_job(sid, 'install')
+
+    username = session.get('username', 'anonymous')
+    audit_repo.log_action(
+        username=username,
+        action='rear_install_started',
+        resource_id=job_id,
+        resource_type='backup_job',
+        details=f'Server ID {sid}'
+    )
+
     job_service.start_job_thread(rear_service._run_install_rear, job_id, dict(server))
     flash(f'ReaR kurulumu başlatıldı. İş #{job_id}', 'info')
     return redirect(url_for('jobs.job_detail', jid=job_id))
@@ -411,6 +435,16 @@ def server_configure(sid):
         content  = rear_service.generate_rear_config(srv_dict, cfg)
 
         job_id = job_service.create_job(sid, 'configure')
+
+        username = session.get('username', 'anonymous')
+        audit_repo.log_action(
+            username=username,
+            action='rear_configure_started',
+            resource_id=job_id,
+            resource_type='backup_job',
+            details=f'Server ID {sid}'
+        )
+
         job_service.start_job_thread(rear_service._run_configure_rear, job_id, srv_dict, content)
         flash(f'Yapılandırma gönderildi. İş #{job_id}', 'info')
         return redirect(url_for('jobs.job_detail', jid=job_id))
@@ -438,6 +472,17 @@ def server_backup(sid):
 
     btype  = request.form.get('backup_type', 'mkbackup')
     job_id = job_service.create_job(sid, 'backup', triggered_by='manual')
+
+    # Audit: log AFTER job_id is created and committed
+    username = session.get('username', 'anonymous')
+    audit_repo.log_action(
+        username=username,
+        action='backup_job_started',
+        resource_id=job_id,
+        resource_type='backup_job',
+        details=f'Server ID {sid}, type={btype}'
+    )
+
     job_service.start_job_thread(job_service._do_backup, job_id, dict(server), btype, 'manual', None)
     flash(f'Yedekleme başlatıldı. İş #{job_id}', 'info')
     return redirect(url_for('jobs.job_detail', jid=job_id))

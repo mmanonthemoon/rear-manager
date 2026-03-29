@@ -17,12 +17,15 @@ from services.ansible import (
     _save_ansible_host, _save_playbook,
 )
 from models import ansible as ansible_repo
+from models import audit as audit_repo
 from models import servers as server_repo
 from models import settings as settings_repo
 from config import ANSIBLE_DIR, ANSIBLE_PLAYS_DIR, ANSIBLE_ROLES_DIR
 
 
 ansible_bp = Blueprint('ansible', __name__)
+
+PAGE_SIZE = 25
 
 
 def _get_settings():
@@ -339,6 +342,16 @@ def ansible_playbook_run(pid):
         triggered_by=session.get('username', 'system')
     )
 
+    # Audit: log AFTER run_id is created and committed
+    username = session.get('username', 'anonymous')
+    audit_repo.log_action(
+        username=username,
+        action='ansible_run_started',
+        resource_id=run_id,
+        resource_type='ansible_run',
+        details=f'Playbook: {pb["name"]}'
+    )
+
     start_ansible_run(run_id, pb_path, extra_args)
 
     flash(f'Playbook "{pb["name"]}" çalıştırılıyor — Çalışma #{run_id}', 'info')
@@ -350,8 +363,18 @@ def ansible_playbook_run(pid):
 @ansible_bp.route('/ansible/runs')
 @login_required
 def ansible_runs():
-    runs = ansible_repo.get_runs(limit=100)
-    return render_template('ansible_runs.html', runs=runs)
+    page = request.args.get('page', 1, type=int)
+    if page < 1:
+        page = 1
+    offset = (page - 1) * PAGE_SIZE
+
+    runs, total = ansible_repo.get_runs(offset=offset, limit=PAGE_SIZE)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    return render_template('ansible_runs.html',
+                           runs=runs,
+                           current_page=page,
+                           total_pages=total_pages,
+                           total=total)
 
 
 @ansible_bp.route('/ansible/runs/<int:rid>')

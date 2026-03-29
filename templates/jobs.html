@@ -101,5 +101,31 @@
     <div class="empty-state"><div class="empty-icon">📋</div><p>İş kaydı bulunamadı.</p></div>
     {% endif %}
   </div>
+  <!-- Pagination nav -->
+  {% if total_pages is defined and total_pages > 1 %}
+  <div class="d-flex justify-content-between align-items-center mt-3" style="padding:8px 16px">
+    <span class="text-muted small">Toplam {{ total }} kayıt — Sayfa {{ current_page }} / {{ total_pages }}</span>
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if current_page > 1 %}
+          <li class="page-item">
+            <a class="page-link" href="{{ url_for('jobs.jobs_list', page=1, status=status_filter, type=type_filter, server=server_filter) }}">«</a>
+          </li>
+          <li class="page-item">
+            <a class="page-link" href="{{ url_for('jobs.jobs_list', page=current_page-1, status=status_filter, type=type_filter, server=server_filter) }}">‹ Önceki</a>
+          </li>
+        {% endif %}
+        {% if current_page < total_pages %}
+          <li class="page-item">
+            <a class="page-link" href="{{ url_for('jobs.jobs_list', page=current_page+1, status=status_filter, type=type_filter, server=server_filter) }}">Sonraki ›</a>
+          </li>
+          <li class="page-item">
+            <a class="page-link" href="{{ url_for('jobs.jobs_list', page=total_pages, status=status_filter, type=type_filter, server=server_filter) }}">»</a>
+          </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

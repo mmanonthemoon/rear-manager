@@ -18,7 +18,7 @@ dashboard_bp = Blueprint('dashboard', __name__)
 @dashboard_bp.route('/')
 @login_required
 def dashboard():
-    servers = server_repo.get_all()
+    servers, _total_servers = server_repo.get_all(offset=0, limit=10000)
     jobs    = job_repo.get_recent(12)
     _running_count = get_running_count()
     server_stats = server_repo.get_dashboard_stats()

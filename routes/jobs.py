@@ -9,19 +9,34 @@ from models import jobs as job_repo
 
 jobs_bp = Blueprint('jobs', __name__)
 
+PAGE_SIZE = 25
+
 
 @jobs_bp.route('/jobs')
 @login_required
 def jobs_list():
+    page = request.args.get('page', 1, type=int)
+    if page < 1:
+        page = 1
+    offset = (page - 1) * PAGE_SIZE
+
     status_filter = request.args.get('status', '')
     type_filter   = request.args.get('type', '')
     server_filter = request.args.get('server', '')
 
-    jobs    = job_repo.get_all_filtered(status_filter, type_filter, server_filter)
+    jobs, total = job_repo.get_all_filtered(status_filter, type_filter, server_filter,
+                                            offset=offset, limit=PAGE_SIZE)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     servers = job_repo.get_servers_list()
     running_job_ids = set(job_service.get_running_job_ids())
-    return render_template('jobs.html', jobs=jobs, servers=servers,
-                           status_filter=status_filter, type_filter=type_filter,
+    return render_template('jobs.html',
+                           jobs=jobs,
+                           servers=servers,
+                           current_page=page,
+                           total_pages=total_pages,
+                           total=total,
+                           status_filter=status_filter,
+                           type_filter=type_filter,
                            server_filter=server_filter,
                            running_job_ids=running_job_ids)
 
