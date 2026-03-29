@@ -198,6 +198,16 @@ def init_db():
             UNIQUE(role_id, section, filename),
             FOREIGN KEY(role_id) REFERENCES ansible_roles(id)
         );
+
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT NOT NULL,
+            action        TEXT NOT NULL,
+            resource_id   INTEGER,
+            resource_type TEXT,
+            details       TEXT DEFAULT '',
+            created_at    TEXT DEFAULT (datetime('now','localtime'))
+        );
     ''')
 
     # Built-in admin hesabi
